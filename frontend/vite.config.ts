@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      // primary '@' alias to project src
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // explicit '@/...' alias (some tools/overlays normalize differently)
+      "@/": fileURLToPath(new URL("./src/", import.meta.url)),
     },
   },
   server: {
