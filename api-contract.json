@@ -1,0 +1,135 @@
+{
+  "_comment": "H0 ARTIFACT — frozen at hour 0. Changes require both FE and BE owners to sign off.",
+  "_version": "1.0",
+  "base_url": "/api/v1",
+  "auth": "Authorization: Bearer <appwrite_jwt> on every endpoint except /health",
+  "error_format": { "type": "string", "title": "string", "status": "number", "detail": "string", "instance": "string" },
+
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "auth": false,
+      "response": { "status": "ok", "demo_db_present": "bool" }
+    },
+    {
+      "method": "POST",
+      "path": "/connections",
+      "body": { "kind": "postgres | demo", "dsn": "string (postgres only)", "label": "string" },
+      "response": { "connection_id": "string" }
+    },
+    {
+      "method": "GET",
+      "path": "/connections/{id}/schema",
+      "response": {
+        "connection_id": "string",
+        "tables": [{ "name": "string", "columns": [{ "name": "string", "type": "string", "nullable": "bool" }], "row_estimate": "number" }],
+        "relationships": [{ "from_table": "string", "from_col": "string", "to_table": "string", "to_col": "string", "inferred": "bool" }],
+        "views": [{ "name": "string", "definition": "string" }],
+        "dbt_metrics": [{ "name": "string", "label": "string", "sql": "string" }]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/connections/{id}/quality",
+      "response": {
+        "connection_id": "string",
+        "scanned_at": "ISO8601",
+        "issues": [{
+          "id": "string",
+          "type": "date_format_inconsistency | text_as_number | unexpected_nulls | likely_duplicates | cardinality_anomaly",
+          "severity": "high | medium | low",
+          "table": "string",
+          "column": "string",
+          "affected_rows": "number",
+          "examples": ["string"],
+          "message": "string"
+        }],
+        "summary": { "high": "number", "medium": "number", "low": "number" }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/investigations",
+      "body": { "connection_id": "string", "question": "string" },
+      "response": { "investigation_id": "string" },
+      "note": "Does NOT block on the agent loop. Returns immediately."
+    },
+    {
+      "method": "GET",
+      "path": "/investigations/{id}/stream",
+      "content_type": "text/event-stream",
+      "note": "SSE stream. See sse_events below. Use fetch+ReadableStream, NOT EventSource.",
+      "sse_events": {
+        "step_start": { "step": "number", "budget_remaining": "number" },
+        "reasoning": "OPAQUE UTF-8 TEXT — append to reasoning panel, NEVER JSON.parse",
+        "action": { "step": "number", "type": "sql_query | conclude", "sql": "string (sql_query only)", "intent": "string (sql_query only)", "verdict": "string (conclude only)", "root_cause": "string (conclude only)", "confidence": "low | medium | high (conclude only)", "recommended_action": "string (conclude only)", "chart": "ChartConfig | null (conclude only)" },
+        "observation": { "step": "number", "status": "ok | explain_error | exec_error | validation_error | timeout | row_cap", "row_count": "number | null", "columns": ["string"] , "preview": [["any"]], "truncated": "bool", "error": "string | null" },
+        "step_end": { "step": "number" },
+        "final": { "investigation_id": "string", "verdict": "confirmed | refuted | inconclusive", "root_cause": "string", "confidence": "low | medium | high", "recommended_action": "string", "chart": "ChartConfig | null", "data": [["any"]], "definition_receipts": [{ "term": "string", "definition": "string", "source": "string" }] },
+        "error": { "code": "string", "message": "string" },
+        "keepalive": ": keepalive (comment, no event/data — skip silently)"
+      },
+      "chart_config": {
+        "chart_type": "line | bar | area | scatter | pie",
+        "x_axis": "string (column name)",
+        "y_axis": "string (column name)",
+        "series_label": "string"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/investigations/{id}",
+      "response": "same shape as final SSE event — replay-safe"
+    },
+    {
+      "method": "GET",
+      "path": "/signals",
+      "build": "STUB",
+      "response": {
+        "signals": [{ "id": "string", "metric": "string", "description": "string", "detected_at": "ISO8601", "investigation_id": "string | null", "severity": "high | medium | low" }]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/reports/weekly/dispatch",
+      "build": "STUB",
+      "response": { "status": "dispatched" }
+    },
+    {
+      "method": "GET",
+      "path": "/semantic",
+      "response": {
+        "definitions": [{ "id": "string", "term": "string", "definition_sql": "string", "natural_language": "string", "source": "harvested | jit_capture | dbt | user_correction", "materiality": "material | trivia", "created_at": "ISO8601" }]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/dashboard",
+      "response": {
+        "connected_sources": "number",
+        "last_query_at": "ISO8601 | null",
+        "key_metrics": [{ "label": "string", "value": "string", "trend": "string | null" }],
+        "recent_investigations": [{ "id": "string", "question": "string", "verdict": "confirmed | refuted | inconclusive | null", "created_at": "ISO8601" }]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/slack/events",
+      "note": "Slack Events API webhook. Verifies HMAC-SHA256 signature on raw bytes. Returns 200 immediately; agent runs in BackgroundTask.",
+      "response": { "status": "ok" }
+    },
+    {
+      "method": "GET",
+      "path": "/slack/oauth/callback",
+      "note": "Slack OAuth callback. Exchanges code for bot_token, writes slack_installations, redirects to /dashboard?slack=connected"
+    },
+    {
+      "method": "GET",
+      "path": "/slack/install-url",
+      "auth": true,
+      "query": { "workspace_id": "string" },
+      "response": { "url": "string" }
+    }
+  ]
+}

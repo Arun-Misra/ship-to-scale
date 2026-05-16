@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.env
+*.env
+
+# uv
+uv.lock
+.uv/
+.uv-cache/
+
+# DuckDB — never commit writable DB files; demo.duckdb IS committed (read-only baked file)
+*.wal
+# demo.duckdb is intentionally NOT in this list
+
+# Fixtures (captured SSE streams) — committed for replay
+# fixtures/ is committed
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Vite
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+
+# Logs
+*.log
