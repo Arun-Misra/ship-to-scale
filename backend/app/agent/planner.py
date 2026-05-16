@@ -7,14 +7,18 @@ CRITICAL — JSON markdown trap:
 Primary fix: response_mime_type="application/json" + response_schema
 Fallback: extract_json() regex strip before every model_validate_json()
 """
+import json
 import re
 from typing import AsyncIterator
 
 from google import genai
 from google.genai.types import GenerateContentConfig
+from pydantic import TypeAdapter
 
 from app.agent.schemas import Action
 from app.config import settings
+
+_action_adapter: TypeAdapter[Action] = TypeAdapter(Action)
 
 _client: genai.Client | None = None
 
@@ -41,10 +45,28 @@ _ACTION_SCHEMA = {
 
 
 def extract_json(text: str) -> str:
-    """Strip markdown fences if Gemini wraps JSON despite response_mime_type setting."""
+    """
+    Extract the first complete JSON object from model output.
+    Handles markdown fences and trailing garbage text after the closing brace.
+    """
     text = text.strip()
+    # Strip markdown fences first
     m = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
-    return m.group(1).strip() if m else text
+    if m:
+        text = m.group(1).strip()
+    # Find the first { and its matching } to extract a clean JSON object
+    start = text.find("{")
+    if start == -1:
+        return text
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start: i + 1]
+    return text[start:]
 
 
 def build_system_prompt(schema_graph: dict, semantic_defs: list[dict]) -> str:
@@ -63,6 +85,14 @@ Rules:
 - Do NOT write DDL or DML (SELECT only).
 - Aggregate before returning — aim for ≤50 result rows.
 - When you have enough evidence, emit a conclude action.
+
+DuckDB date notes (critical — the created_at column is VARCHAR with mixed formats):
+- Use TRY_STRPTIME(created_at, '%Y-%m-%d') for ISO dates, TRY_STRPTIME(created_at, '%m/%d/%Y') for US format.
+- Combine with COALESCE: COALESCE(TRY_STRPTIME(created_at,'%Y-%m-%d'), TRY_STRPTIME(created_at,'%m/%d/%Y'))
+- To get year-week: strftime(COALESCE(TRY_STRPTIME(created_at,'%Y-%m-%d'), TRY_STRPTIME(created_at,'%m/%d/%Y')), '%Y-W%W')
+- Do NOT use CAST(created_at AS DATE) — it fails on mixed formats.
+- Do NOT use the date() scalar function — it does not exist in DuckDB.
+- location/city data is in the "region" column on both orders and customers tables.
 """
 
 
@@ -76,10 +106,27 @@ async def stream_reasoning(prompt: str) -> AsyncIterator[str]:
             yield chunk.text
 
 
+_SQL_QUERY_KEYS = {"type", "sql", "intent"}
+_CONCLUDE_KEYS = {"type", "verdict", "root_cause", "confidence", "recommended_action", "chart"}
+
+
+def _strip_action(raw: dict) -> dict:
+    """
+    Gemini populates every field in the flat schema regardless of type discriminator.
+    Strip keys that don't belong to the chosen action type so extra='forbid' doesn't reject them.
+    """
+    action_type = raw.get("type")
+    if action_type == "sql_query":
+        return {k: v for k, v in raw.items() if k in _SQL_QUERY_KEYS}
+    if action_type == "conclude":
+        return {k: v for k, v in raw.items() if k in _CONCLUDE_KEYS}
+    return raw
+
+
 def generate_action(prompt: str) -> Action:
     """
     Generate a structured Action. Uses response_mime_type=application/json as primary.
-    Falls back to extract_json() strip before model_validate_json().
+    Falls back to extract_json() strip before validation.
     """
     response = _get_client().models.generate_content(
         model=settings.gemini_model,
@@ -89,4 +136,5 @@ def generate_action(prompt: str) -> Action:
             response_schema=_ACTION_SCHEMA,
         ),
     )
-    return Action.model_validate_json(extract_json(response.text))
+    raw = json.loads(extract_json(response.text))
+    return _action_adapter.validate_python(_strip_action(raw))

@@ -9,6 +9,9 @@ from app.appwrite.client import users
 from app.config import settings
 
 
+_DEV_USER = {"user_id": "local-dev-user", "workspace_id": "local-dev-workspace"}
+
+
 async def require_auth(authorization: str = Header(...)) -> dict:
     """
     FastAPI dependency. Verifies Appwrite JWT.
@@ -18,6 +21,9 @@ async def require_auth(authorization: str = Header(...)) -> dict:
         raise HTTPException(401, "Missing bearer token")
 
     jwt = authorization.removeprefix("Bearer ")
+
+    if settings.dev_bypass_auth and jwt == "local-dev-jwt":
+        return _DEV_USER
 
     try:
         # Appwrite SDK is synchronous — wrap in thread

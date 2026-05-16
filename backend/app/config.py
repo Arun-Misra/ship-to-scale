@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     demo_db_path: str = "data/demo.duckdb"
     frontend_url: str = "http://localhost:5174"
+    dev_bypass_auth: bool = False  # set DEV_BYPASS_AUTH=true in .env for local dev without Appwrite
 
     sandbox_statement_timeout_seconds: int = 8
     sandbox_row_cap: int = 5000
