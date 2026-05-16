@@ -1,6 +1,6 @@
 # DataPilot — Product Requirements Document
 
-**Version:** 1.0 (Hackathon build)
+**Version:** 1.1 (Hackathon build)
 **One-liner:** The AI Data Team. Connect your data where it already lives, ask anything in plain English, and get an autonomous analyst that investigates problems on its own, watches your numbers 24/7, and learns your business's private language over time.
 
 
@@ -50,11 +50,10 @@ A product that replaces the analyst's role (and the data scientist's repeatable 
 - **Requirement:** the source is never mutated. Read-only role enforced at the connection layer.
 
 ### Layer 2: Clean (trust foundation)
-- Source tables are **immutable**. Cleaning is a stack of declarative SQL transforms layered as views — fully reversible. Destruction is structurally impossible, not just logged.
-- **Two tiers, never merged:**
-  - **Safe fixes** — deterministic normalization (date formats, text→number, casing). Auto-applied, reversible.
-  - **Review queue** — probabilistic entity resolution (duplicates, merges). **Tagged, never deleted.** Human-driven, row-level, never bulk, never part of ingestion.
-- Worst case of a wrong dedup call = "a filter is off," never "revenue is silently wrong."
+- Source tables are **immutable**. DataPilot never writes to, fixes, or changes any source data — not now, not ever from this layer.
+- **Read-only data quality scan:** on connect, DataPilot scans the data and produces a plain-language report of what looks wrong — bad date formats, text fields that should be numbers, empty fields, likely duplicates. It shows the problems. It does not fix them.
+- **Why read-only:** customers need to trust the product before they let it touch anything. Showing problems accurately is how that trust is built. Fixing is a later product decision, not an MVP one.
+- The quality report is always visible and refreshable. Nothing is auto-applied, auto-merged, or auto-deleted. The customer's data looks exactly the same after connecting as before.
 
 ### Layer 3: Investigate (the wow / replaces the analyst)
 - Plain-English questions → instant answer + chart, each carrying a **definition receipt** ("Revenue = SUM(order_total) excl. refunds, incl. shipping — not your definition? ✎").
@@ -82,11 +81,12 @@ The semantic engine — builds the company's private dictionary, one tiny piece 
 
 ## 5. Integration Model (how it embeds in a company)
 
-Not "people log into a dashboard." It embeds in three places the work already happens:
+It embeds in three places the work already happens:
 
 1. **The data** — connect read-only where data already lives. No upload, no export project.
-2. **Slack/Teams** — a bot in the channel where data questions are already asked. Questions hit the bot before they reach a human. This is the primary interface and the distribution mechanism (spreads team-to-team on its own).
-3. **The cadence** — owns the recurring weekly metrics email and monthly board deck, generated on schedule with zero human in the loop.
+2. **Slack (two-way bot)** — someone asks in Slack, the bot answers in Slack. Questions, investigations, and alerts all happen without leaving Slack. This is the primary day-to-day interface and the distribution mechanism — it spreads team-to-team on its own without anyone logging in.
+3. **The web dashboard** — a deeper surface showing all connected databases, key metrics, the full investigation view (watch the AI think step by step), data quality report, and scheduled reports. Used for deeper dives; Slack handles the daily quick questions.
+4. **The cadence** — owns the recurring weekly metrics email and monthly board deck, generated on schedule with zero human in the loop.
 
 **Land-and-expand:** one team + one source → answers visible to others → more sources connected → more cross-team questions answerable → spreads sideways through the org.
 
@@ -114,7 +114,7 @@ Not "people log into a dashboard." It embeds in three places the work already ha
 - Not a BI dashboard builder you operate manually (that's the thing we replace).
 - Not a writable system — never mutates source data.
 - Not novel ML research / custom model development (senior DS territory).
-- Not bulk auto-dedup or any silent destructive operation.
+- Not a data-fixing tool — it shows data quality problems, never auto-fixes or deletes anything.
 - MVP does not build SOC2, SSO, multi-connector breadth, or the cross-user conflict resolver — these are architecture defended in Q&A, not built in the hackathon.
 
 ---
@@ -171,16 +171,18 @@ Anchored against Tableau ($900/user/yr) **+** an analyst ($60–80k/yr) — ~1/3
 **Must work (critical path):**
 1. Appwrite auth → workspace
 2. Connect to a live read-only Postgres (prove "no upload")
-3. Tiered cleaning on a seeded messy dataset (safe auto-fixes + tagged review queue)
+3. Data quality scan on a seeded messy dataset — shows problems (bad dates, duplicates, empty fields), changes nothing
 4. Chat → answer + chart + definition receipt
 5. Autonomous agent investigation on the demo dataset (streamed reasoning UI)
 6. Seeded semantic store (show "it used your definition + asked once")
 7. One **pre-computed** anomaly in a Signals feed (no real scheduler built)
-8. Deployed to a public URL + QR
+8. **Two-way Slack bot** — ask in Slack, get answer back in Slack (simple: text + numbers, no interactive buttons in v1)
+9. Web dashboard showing connected databases + key numbers
+10. Deployed to a public URL + QR
 
-**Slack — scoped, not cut:** keep **outbound-only** (Slack incoming webhook, ~20 min, no OAuth/listener) on the scheduled auto-report — a real message in a real channel. **Cut the inbound two-way listener** (Events API + OAuth + Block Kit = 4–6 h sinkhole); demo the two-way ask as the in-app chat.
+**Slack — two-way, simple:** Slack Events API + OAuth for the inbound listener. Response is text + numbers in the thread. No Block Kit interactive buttons in v1 — that is roadmap. The full investigation ("why" questions) links to the web dashboard.
 
-**Cut order if behind:** live warehouse connectors → multi-dataset → outbound Slack → tiered cleaning down to safe-fixes only. **Never cut:** the streamed agent loop. It is the company.
+**Cut order if behind:** live warehouse connectors → multi-dataset → dashboard polish → Slack responses degrade to text-only. **Never cut:** the streamed agent loop. It is the company.
 
 **Demo principle:** fake the *scale and timing*, never the *architecture*. Have the hardened architecture (semantic-layer-as-compilation-target, DuckDB concurrency model, dual retry budget) ready to whiteboard in Q&A.
 
@@ -188,18 +190,18 @@ Anchored against Tableau ($900/user/yr) **+** an analyst ($60–80k/yr) — ~1/3
 
 ## 11. 3-Minute Demo Script
 
-1. **0:00–0:30** — Problem: "$80k for someone to answer questions you should get in seconds." Show ugly data.
-2. **0:30–0:55** — Connect read-only Postgres (no upload). Safe fixes auto-applied; dupes tagged not deleted.
-3. **0:55–1:20** — Ask in chat → instant chart + definition receipt.
+1. **0:00–0:30** — Problem: "$80k for someone to answer questions you should get in seconds." Show ugly, messy data.
+2. **0:30–0:55** — Connect read-only Postgres (no upload). Data quality scan runs — shows bad dates, duplicates, empty fields. *"We see these problems. We never touch your data — you decide what to do with them."*
+3. **0:55–1:20** — Ask in the web chat → instant chart + definition receipt.
 4. **1:20–1:40** — Ambiguous term → one JIT question → "it now knows our language."
 5. **1:40–2:25** — Kill shot: "why did revenue drop?" → **paced cached replay** of a real investigation (~25s of streamed thought at ~2.5s/step) → root-cause report (incl. honest uncertainty). **Presenter narrates the whole stream, never goes silent:** *"Watch it work — it just isolated Mumbai, now it's writing a new query to check returning customers. An analyst gets you this Tuesday. We did it in 30 seconds."*
-6. **2:25–2:50** — Switch to Slack (**outbound only — the feature actually built**): the weekly board report + overnight anomaly, already waiting. Line: *"Your analyst burns 6 hours on this every Monday. It wrote and delivered it while the team slept — every week, forever. That's the hire you stop making."*
+6. **2:25–2:50** — Switch to Slack: type *"@DataPilot what's revenue this week?"* → answer comes back in the thread, live. Then show the weekly board report already waiting. Line: *"Your team asks questions in Slack already. Now they get answers in 10 seconds instead of waiting 2 days. And the Monday report writes itself."*
 7. **2:50–3:00** — "Live now — scan this." QR. "We replace the tool and the hire."
 
 **Demo-engineering rules (read before building the demo):**
 - Step 5 is a **paced replay of a real prior run**, not a live API call. Live LLM is an optional flex *only* if venue network is proven solid in rehearsal. Timing must never depend on Gemini latency.
 - The fallback **preserves the streamed reasoning** — never cut to a static final report. The stream is the differentiator; skipping it demotes the demo to a commodity. If anything fails, the paced replay still plays.
-- Step 6 is **outbound Slack only**. Do not type into Slack live (inbound listener was cut in §10).
+- Step 6 Slack ask can be live (simple text response, low latency risk) or pre-staged. The weekly report is pre-generated and sitting in the channel.
 
 ---
 
@@ -215,7 +217,7 @@ Anchored against Tableau ($900/user/yr) **+** an analyst ($60–80k/yr) — ~1/3
 | Cost blowup on monitoring | Deterministic detector on snapshot + materiality floor + debounce before any LLM call |
 | Team burnout (20+ hr) | Enforced rest rotation; 2 build / 2 rest, swap |
 | `database is locked` crash during demo | Per-session in-memory DuckDB + baked read-only demo file; no multi-worker persistent file |
-| Slack integration eats critical path | Outbound webhook only (~20 min); inbound listener cut, not built |
+| Slack OAuth/Events API setup takes too long | Build against a test workspace from hour 1; scope v1 response to text-only (no Block Kit); full interactive buttons are roadmap |
 | Agent loop explodes via stacked retries | Single shared bounded retry budget across ValidationError + EXPLAIN loops |
 | "Same SQL, no rewrite" challenged by technical judge | Reframe to semantic-layer-as-compilation-target + SQLGlot roadmap; concede transpilation honestly |
 
@@ -229,4 +231,4 @@ Anchored against Tableau ($900/user/yr) **+** an analyst ($60–80k/yr) — ~1/3
 
 ---
 
-*This PRD reflects the hardened architecture: immutable source, tiered non-destructive cleaning, sandboxed self-correcting agent, deterministic-gated monitoring, and a just-in-time semantic engine as the compounding moat.*
+*This PRD reflects the hardened architecture: immutable read-only source (no writes anywhere), a read-only data quality scanner that shows but never fixes problems, a sandboxed self-correcting agent, a two-way Slack bot as the primary interface, a web dashboard for deeper work, deterministic-gated monitoring, and a just-in-time semantic engine as the compounding moat.*
