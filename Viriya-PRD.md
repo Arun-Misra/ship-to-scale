@@ -1,4 +1,4 @@
-# DataPilot — Product Requirements Document
+# Viriya — Product Requirements Document
 
 
 **Version:** 1.1 (Hackathon build)
@@ -53,8 +53,8 @@ A product that replaces the analyst's role (and the data scientist's repeatable 
 - **Requirement:** the source is never mutated. Read-only role enforced at the connection layer.
 
 ### Layer 2: Clean (trust foundation)
-- Source tables are **immutable**. DataPilot never writes to, fixes, or changes any source data — not now, not ever from this layer.
-- **Read-only data quality scan:** on connect, DataPilot scans the data and produces a plain-language report of what looks wrong — bad date formats, text fields that should be numbers, empty fields, likely duplicates. It shows the problems. It does not fix them.
+- Source tables are **immutable**. Viriya never writes to, fixes, or changes any source data — not now, not ever from this layer.
+- **Read-only data quality scan:** on connect, Viriya scans the data and produces a plain-language report of what looks wrong — bad date formats, text fields that should be numbers, empty fields, likely duplicates. It shows the problems. It does not fix them.
 - **Why read-only:** customers need to trust the product before they let it touch anything. Showing problems accurately is how that trust is built. Fixing is a later product decision, not an MVP one.
 - The quality report is always visible and refreshable. Nothing is auto-applied, auto-merged, or auto-deleted. The customer's data looks exactly the same after connecting as before.
 
@@ -198,7 +198,7 @@ Anchored against Tableau ($900/user/yr) **+** an analyst ($60–80k/yr) — ~1/3
 3. **0:55–1:20** — Ask in the web chat → instant chart + definition receipt.
 4. **1:20–1:40** — Ambiguous term → one JIT question → "it now knows our language."
 5. **1:40–2:25** — Kill shot: "why did revenue drop?" → **paced cached replay** of a real investigation (~25s of streamed thought at ~2.5s/step) → root-cause report (incl. honest uncertainty). **Presenter narrates the whole stream, never goes silent:** *"Watch it work — it just isolated Mumbai, now it's writing a new query to check returning customers. An analyst gets you this Tuesday. We did it in 30 seconds."*
-6. **2:25–2:50** — Switch to Slack: type *"@DataPilot what's revenue this week?"* → answer comes back in the thread, live. Then show the weekly board report already waiting. Line: *"Your team asks questions in Slack already. Now they get answers in 10 seconds instead of waiting 2 days. And the Monday report writes itself."*
+6. **2:25–2:50** — Switch to Slack: type *"@Viriya what's revenue this week?"* → answer comes back in the thread, live. Then show the weekly board report already waiting. Line: *"Your team asks questions in Slack already. Now they get answers in 10 seconds instead of waiting 2 days. And the Monday report writes itself."*
 7. **2:50–3:00** — "Live now — scan this." QR. "We replace the tool and the hire."
 
 **Demo-engineering rules (read before building the demo):**
