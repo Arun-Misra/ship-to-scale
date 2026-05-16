@@ -1,7 +1,7 @@
-# DataPilot — Technical Requirements Document
+# Viriya — Technical Requirements Document
 
 **Version:** 1.1 (Hackathon build — 20h)
-**Companion to:** `DataPilot-PRD.md` v1.0
+**Companion to:** `Viriya-PRD.md` v1.0
 **Status:** Implementation-ready
 **Scope rule:** This TRD specifies *what gets built in the hackathon* in full technical detail, and *what is architecturally defended in Q&A but not built*. Every "build" item here is on the critical path of PRD §10. Every "defend" item is whiteboard-ready, not coded.
 
@@ -269,7 +269,7 @@ There is no other path to the wire. This is reviewed as a hard invariant.
 - Supported kinds in the build: `postgres` (live, proves "no upload") and `demo` (baked file). Snowflake/BigQuery/Redshift are **[DEFEND]** — same `Connection` interface, different attach string + a SQLGlot transpile step.
 - DSN is accepted, immediately validated, and **never persisted in plaintext**. Stored in Appwrite as a reference; the secret lives in a backend env/secret store keyed by `connection_id` for the hackathon (real KMS is [DEFEND]).
 - **Read-only enforcement at the connection layer (PRD §4 L1 requirement):**
-  - The provided Postgres role must be read-only. We do not trust the caller's claim — we *verify* by attempting a probe write to a scratch schema inside a transaction that is always rolled back; if the write *succeeds*, the connection is **rejected** with a clear error ("supplied role can write — DataPilot requires a read-only role"). DuckDB's `READ_ONLY` attach is a second belt; the rejected-on-writable-role check is the suspenders.
+  - The provided Postgres role must be read-only. We do not trust the caller's claim — we *verify* by attempting a probe write to a scratch schema inside a transaction that is always rolled back; if the write *succeeds*, the connection is **rejected** with a clear error ("supplied role can write — Viriya requires a read-only role"). DuckDB's `READ_ONLY` attach is a second belt; the rejected-on-writable-role check is the suspenders.
   - All subsequent access is via DuckDB `ATTACH ... READ_ONLY`. Source mutation is structurally impossible from our code path.
 
 ### 3.2 Schema crawl (on connect)
@@ -289,7 +289,7 @@ The schema graph is the grounding context handed to the agent and to `EXPLAIN` v
 
 ### 4.1 Immutability model
 
-DataPilot **never writes to the source, never applies fixes, never deletes or merges rows.** The data quality layer is a pure read: scan, analyse, report. The customer's database looks identical before and after connecting. This is a product decision (trust must be earned before touching data) and a technical invariant (all access is read-only by construction — §3.1, §6.2).
+Viriya **never writes to the source, never applies fixes, never deletes or merges rows.** The data quality layer is a pure read: scan, analyse, report. The customer's database looks identical before and after connecting. This is a product decision (trust must be earned before touching data) and a technical invariant (all access is read-only by construction — §3.1, §6.2).
 
 ### 4.2 What the scan does — and the pushdown trap **[BUILD — non-negotiable]**
 
@@ -725,7 +725,7 @@ The Slack bot is the primary day-to-day interface. Someone asks in a Slack chann
 
 ### 9.1 How it works — with raw body + signature verification **[BUILD — non-negotiable]**
 
-1. User types `@DataPilot what's our revenue this week?` in any channel the bot is added to.
+1. User types `@Viriya what's our revenue this week?` in any channel the bot is added to.
 2. Slack sends an event to `POST /slack/events`.
 3. Backend verifies the Slack HMAC-SHA256 signature **on the exact raw request bytes**.
 4. Question is routed to the same agent pipeline as the web chat (§5).
@@ -871,7 +871,7 @@ Weekly board report + anomaly alerts still post to a configured channel via `cha
 ### 9.7 What is roadmap (not v1)
 
 - Block Kit interactive buttons/menus
-- Slash commands (`/datapilot`)
+- Slash commands (`/Viriya`)
 - Home tab
 - Scheduled automatic dispatch (cron)
 
