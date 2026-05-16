@@ -12,28 +12,40 @@ const links = [
 
 export function Sidebar() {
   return (
-    <aside className="w-64 h-full bg-gray-950 border-r border-gray-800 flex flex-col">
-      <div className="px-4 py-6 flex items-center gap-2">
-        <span className="inline-block h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.7)]" aria-hidden="true" />
-        <span className="text-base font-mono tracking-tight text-gray-100 lowercase">viriya</span>
+    <aside className="flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950/95 backdrop-blur">
+      <div className="flex items-center gap-2 px-4 py-6">
+        <span
+          className="inline-block h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.7)]"
+          aria-hidden="true"
+        />
+        <div className="leading-none">
+          <span className="block text-base font-mono tracking-[0.22em] text-gray-100 uppercase">viriya</span>
+          <span className="mt-1 block text-[10px] uppercase tracking-[0.3em] text-gray-500">observability console</span>
+        </div>
       </div>
-      <nav className="flex flex-col gap-1 px-2">
+      <nav className="flex flex-1 flex-col gap-1 px-2">
         {links.map((l) => (
           <NavLink
             key={l.to}
             to={l.to}
             className={({ isActive }) =>
               cn(
-                "no-underline flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-gray-400 hover:text-gray-100 hover:bg-gray-900",
-                isActive && "bg-gray-900 text-sky-500"
+                "group no-underline flex items-center gap-3 rounded-md px-4 py-2.5 text-sm text-gray-400 transition-all duration-200 hover:bg-gray-900/80 hover:text-gray-100 hover:translate-x-0.5",
+                isActive && "bg-gray-900 text-sky-400 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.14)]"
               )
             }
           >
-            <l.icon className="h-4 w-4" aria-hidden="true" />
-            <span>{l.label}</span>
+            <l.icon className="h-4 w-4 shrink-0 text-gray-500 transition-colors group-hover:text-sky-400" aria-hidden="true" />
+            <span className="flex-1">{l.label}</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-transparent transition-colors group-hover:bg-sky-500/70" aria-hidden="true" />
           </NavLink>
         ))}
       </nav>
+      <div className="border-t border-gray-800 px-4 py-4">
+        <div className="rounded-md border border-gray-800 bg-gray-900/70 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+          live mesh connected
+        </div>
+      </div>
     </aside>
   );
 }
