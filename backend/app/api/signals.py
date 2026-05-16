@@ -18,6 +18,6 @@ SIGNALS_FIXTURE_PATH = "fixtures/signals.json"
 async def get_signals(user=Depends(require_auth)):
     # TODO P6: load from fixtures/signals.json (pre-computed offline, not live)
     if os.path.exists(SIGNALS_FIXTURE_PATH):
-        with open(SIGNALS_FIXTURE_PATH) as f:
+        with open(SIGNALS_FIXTURE_PATH, encoding="utf-8") as f:
             return json.load(f)
     return {"signals": []}

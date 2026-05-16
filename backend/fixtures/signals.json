@@ -1,0 +1,49 @@
+{
+  "signals": [
+    {
+      "id": "signal-mumbai-revenue-drop",
+      "title": "⚠️ High Materiality Anomaly: Mumbai revenue 82% below 4-week average",
+      "details": "Week of 2025-02-24: Mumbai bookings totalled ₹4,038 against a trailing 4-week average of ₹22,161. Statistical confidence: 3.1σ deviation. Isolated to 2 orders from enterprise accounts (customer_id C002, C004). Remaining regions (Delhi, Bangalore, Chennai) within normal variance. Estimated revenue at risk: ₹18,123 vs baseline.",
+      "priority": "critical",
+      "detected_at": "2025-02-25T06:00:00Z",
+      "investigation": {
+        "verdict": "confirmed",
+        "root_cause": "Two Mumbai enterprise accounts placed unusually small orders in week 8 (Feb 24). Historical pattern shows these accounts consistently drive ₹8,000–12,000 each per week. This week both accounts dropped to under ₹1,200 combined — consistent with a procurement freeze or contract renewal gap rather than a product or pricing issue.",
+        "confidence": "high",
+        "recommended_action": "Trigger account health check for C002 and C004. Review renewal dates. Consider proactive outreach from the enterprise success team before end of Q1.",
+        "chart": {
+          "chart_type": "bar",
+          "x_axis": "week",
+          "y_axis": "revenue",
+          "series_label": "Mumbai Weekly Revenue (₹)"
+        },
+        "data": [
+          ["2024-12-30", 9290.67],
+          ["2025-01-27", 7613.79],
+          ["2025-02-24", 4038.37],
+          ["2025-03-31", 21593.12],
+          ["2025-04-28", 22161.24],
+          ["2025-05-26", 15715.87],
+          ["2025-06-30", 19843.30],
+          ["2025-07-28", 18629.21]
+        ]
+      }
+    },
+    {
+      "id": "signal-null-email-customers",
+      "title": "Data quality: 1 customer record has null email — downstream comms at risk",
+      "details": "Customer C003 has no email on record. This account placed 97 orders totalling ₹89,340 in the trailing 12 months. Without an email address, automated renewal reminders and invoice dispatch will silently fail.",
+      "priority": "warning",
+      "detected_at": "2025-05-17T00:00:00Z",
+      "investigation": null
+    },
+    {
+      "id": "signal-date-format-drift",
+      "title": "Monitoring note: mixed date formats detected in orders.created_at",
+      "details": "341 of 507 order records use MM/DD/YYYY format while 166 use ISO 8601 (YYYY-MM-DD). No revenue impact, but time-series aggregations that rely on date parsing will produce inconsistent results until normalised.",
+      "priority": "informational",
+      "detected_at": "2025-05-17T00:00:00Z",
+      "investigation": null
+    }
+  ]
+}
