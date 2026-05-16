@@ -76,6 +76,7 @@ async def register_connection(body: RegisterConnectionRequest, user=Depends(requ
                 kind="demo",
                 label=body.label,
                 schema=dataclasses.asdict(schema),
+                dsn="",
             )
         finally:
             session.close()
@@ -97,6 +98,7 @@ async def register_connection(body: RegisterConnectionRequest, user=Depends(requ
             kind="postgres",
             label=body.label,
             schema=dataclasses.asdict(schema),
+            dsn=body.dsn,
         )
     finally:
         session.close()

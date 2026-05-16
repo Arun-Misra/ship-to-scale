@@ -749,6 +749,9 @@ No indexes needed beyond Appwrite's auto `$id`.
 | `kind` | String | 20 | Yes |
 | `label` | String | 100 | Yes |
 | `schema` | String | 65535 | Yes |
+| `dsn` | String | 500 | No |
+
+> `dsn` is stored here for hackathon convenience. In production, move to a KMS keyed by `connection_id`.
 
 **Index:** Key index on `workspace_id` (name it `workspace_id_idx`).
 

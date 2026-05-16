@@ -7,6 +7,7 @@ One shared retry budget per step (ValidationError + EXPLAIN failures share the s
 Hard step budget → graceful partial answer (never a crash, never a confident wrong answer).
 """
 import asyncio
+import json
 from typing import AsyncIterator
 
 from pydantic import ValidationError
@@ -19,7 +20,7 @@ from app.agent.sse import sse_struct, sse_reasoning, sse_keepalive
 from app.agent.executor import explain_sql, execute_sql
 from app.agent.planner import build_system_prompt, stream_reasoning, generate_action
 from app.db.session import DuckDBSession
-from app.appwrite.store import list_semantic_definitions
+from app.appwrite.store import list_semantic_definitions, get_connection
 from app.config import settings
 
 
@@ -34,10 +35,19 @@ async def run_investigation(
     The agent loop is testable with zero auth — hardcode workspace_id + local Postgres.
     """
     semantic_defs = await list_semantic_definitions(workspace_id)
-    session = DuckDBSession(mode="demo")  # TODO P3: route live connections here
+
+    conn_doc = await get_connection(connection_id, workspace_id)
+    if conn_doc and conn_doc.get("kind") == "postgres":
+        session = DuckDBSession(mode="live", dsn=conn_doc["dsn"])
+    else:
+        session = DuckDBSession(mode="demo")
 
     try:
-        schema_graph = {}  # TODO P3: load from Appwrite schema store
+        raw_schema = conn_doc.get("schema", "{}") if conn_doc else "{}"
+        try:
+            schema_graph = json.loads(raw_schema)
+        except Exception:
+            schema_graph = {}
         system_prompt = build_system_prompt(schema_graph, semantic_defs)
         observations: list[Observation] = []
         step_budget = settings.agent_step_budget

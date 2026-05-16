@@ -8,6 +8,7 @@ The Appwrite Python SDK is synchronous. Calling it directly in async code blocks
 Pattern:
     result = await anyio.to_thread.run_sync(lambda: db.list_documents(...))
 """
+import json
 import anyio
 from appwrite.query import Query
 
@@ -20,12 +21,19 @@ C = settings  # shorthand for collection IDs
 
 # ── Connections ──────────────────────────────────────────────────────────────
 
-async def save_connection(workspace_id: str, kind: str, label: str, schema: dict) -> str:
+async def save_connection(workspace_id: str, kind: str, label: str, schema: dict, dsn: str = "") -> str:
+    # DSN stored here for hackathon convenience. Move to a KMS / encrypted store for production.
     doc = await anyio.to_thread.run_sync(lambda: db.create_document(
         database_id=DB,
         collection_id=C.appwrite_collection_connections,
         document_id="unique()",
-        data={"workspace_id": workspace_id, "kind": kind, "label": label, "schema": str(schema)},
+        data={
+            "workspace_id": workspace_id,
+            "kind": kind,
+            "label": label,
+            "schema": json.dumps(schema),
+            "dsn": dsn,
+        },
     ))
     return doc["$id"]
 
