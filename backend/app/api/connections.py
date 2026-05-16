@@ -116,9 +116,23 @@ async def get_schema(connection_id: str, user=Depends(require_auth)):
 
 @router.get("/connections/{connection_id}/quality")
 async def get_quality(connection_id: str, user=Depends(require_auth)):
-    # TODO P5:
-    # 1. Load connection from Appwrite
-    # 2. Open DuckDB session (read-only)
-    # 3. run_quality_scan — pulls 5000-row sample into DuckDB memory, runs checks locally
-    # 4. Return issues[] — NEVER writes to source, NEVER auto-fixes anything
-    raise NotImplementedError
+    conn = await get_connection(connection_id, workspace_id=user["workspace_id"])
+    if not conn:
+        raise HTTPException(404, "Connection not found")
+
+    kind = conn.get("kind", "demo")
+    schema_name = "main" if kind == "demo" else "src"
+
+    if kind == "postgres":
+        session = DuckDBSession(mode="live", dsn=conn["dsn"])
+    else:
+        session = DuckDBSession(mode="demo")
+
+    try:
+        result = await anyio.to_thread.run_sync(
+            lambda: run_quality_scan(session.con, connection_id=connection_id, schema_name=schema_name)
+        )
+    finally:
+        session.close()
+
+    return result
