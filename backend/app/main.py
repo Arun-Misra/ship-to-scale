@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import health, connections, investigations, signals, reports, semantic, dashboard, slack
 
-app = FastAPI(title="DataPilot API", version="1.0.0")
+app = FastAPI(title="Niriya API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
