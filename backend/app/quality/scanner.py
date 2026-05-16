@@ -21,16 +21,17 @@ from app.quality.checks.cardinality import check_cardinality_anomalies
 SAMPLE_ROWS = 5000
 
 
-def run_quality_scan(con: duckdb.DuckDBPyConnection, connection_id: str) -> dict:
+def run_quality_scan(con: duckdb.DuckDBPyConnection, connection_id: str, schema_name: str = "src") -> dict:
     """
     Run all quality checks on a 5000-row in-memory sample.
-    Returns the API response shape from api-contract.json /connections/{id}/quality.
+    schema_name="src" for live postgres, "main" for demo DuckDB file.
+    Returns the API response shape from /connections/{id}/quality.
     """
     issues = []
 
-    tables = _get_tables(con)
+    tables = _get_tables(con, schema_name)
     for table_name in tables:
-        cols = _get_columns(con, table_name)
+        cols = _get_columns(con, table_name, schema_name)
         col_list = ", ".join(f'"{c}"' for c in cols)
 
         # Pull sample into DuckDB memory — LIMIT 5000 is safe pushdown to Postgres
@@ -38,7 +39,7 @@ def run_quality_scan(con: duckdb.DuckDBPyConnection, connection_id: str) -> dict
         try:
             con.execute(
                 f'CREATE OR REPLACE TEMP TABLE "{sample_table}" AS '
-                f'SELECT {col_list} FROM src."{table_name}" LIMIT {SAMPLE_ROWS}'
+                f'SELECT {col_list} FROM "{schema_name}"."{table_name}" LIMIT {SAMPLE_ROWS}'
             )
         except Exception:
             continue  # skip table if sample fails
@@ -64,20 +65,20 @@ def run_quality_scan(con: duckdb.DuckDBPyConnection, connection_id: str) -> dict
     }
 
 
-def _get_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
+def _get_tables(con: duckdb.DuckDBPyConnection, schema_name: str) -> list[str]:
     try:
         rows = con.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'src' AND table_type = 'BASE TABLE'"
+            f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE'"
         ).fetchall()
         return [r[0] for r in rows]
     except Exception:
         return []
 
 
-def _get_columns(con: duckdb.DuckDBPyConnection, table_name: str) -> list[str]:
+def _get_columns(con: duckdb.DuckDBPyConnection, table_name: str, schema_name: str = "src") -> list[str]:
     try:
         rows = con.execute(
-            f"SELECT column_name FROM information_schema.columns WHERE table_schema = 'src' AND table_name = '{table_name}' ORDER BY ordinal_position"
+            f"SELECT column_name FROM information_schema.columns WHERE table_schema = '{schema_name}' AND table_name = '{table_name}' ORDER BY ordinal_position"
         ).fetchall()
         return [r[0] for r in rows]
     except Exception:
