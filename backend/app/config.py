@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemma-4-31b-it"
+    gemini_model: str = "gemini-2.0-flash"
 
     appwrite_endpoint: str = "https://cloud.appwrite.io/v1"
     appwrite_project_id: str = ""
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     slack_client_secret: str = ""
 
     demo_db_path: str = "data/demo.duckdb"
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5174"
 
     sandbox_statement_timeout_seconds: int = 8
     sandbox_row_cap: int = 5000
