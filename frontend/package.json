@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "appwrite": "^16.0.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
     "recharts": "^2.13.0",
-    "appwrite": "^16.0.2",
-    "clsx": "^2.1.1",
+    "tailwind": "^4.0.0",
     "tailwind-merge": "^2.5.3"
   },
   "devDependencies": {

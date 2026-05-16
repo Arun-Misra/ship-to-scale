@@ -16,17 +16,19 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/investigate" element={<InvestigationPage />} />
-            <Route path="/quality/:connectionId" element={<QualityPage />} />
-            <Route path="/signals" element={<SignalsPage />} />
-            <Route path="/semantic" element={<SemanticPage />} />
-          </Routes>
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<Navigate to="/investigate" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/investigate" element={<InvestigationPage />} />
+              <Route path="/quality/:connectionId" element={<QualityPage />} />
+              <Route path="/signals" element={<SignalsPage />} />
+              <Route path="/semantic" element={<SemanticPage />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </BrowserRouter>
