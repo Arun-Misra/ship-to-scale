@@ -32,5 +32,5 @@ def screen_sql(sql: str) -> str | None:
         return "Multi-statement SQL is not allowed. Submit one statement at a time."
     match = _DDL_DML_PATTERN.search(sql_stripped)
     if match:
-        return f"Forbidden keyword '{match.group()}' — Niriya runs in read-only mode."
+        return f"Forbidden keyword '{match.group()}' — viriya runs in read-only mode."
     return None

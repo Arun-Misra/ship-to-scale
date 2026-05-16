@@ -48,7 +48,7 @@ def extract_json(text: str) -> str:
 
 
 def build_system_prompt(schema_graph: dict, semantic_defs: list[dict]) -> str:
-    return f"""You are Niriya's autonomous analyst agent. You investigate data questions by writing SQL queries and reasoning about results.
+    return f"""You are viriya's autonomous analyst agent. You investigate data questions by writing SQL queries and reasoning about results.
 
 Schema:
 {schema_graph}

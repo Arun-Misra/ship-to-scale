@@ -1,4 +1,4 @@
-﻿# Niriya â€” The AI Data Team
+﻿# viriya â€” The AI Data Team
 
 > Connect your data, ask anything in plain English, get an autonomous analyst that investigates problems, watches your numbers 24/7, and learns your business's private language over time.
 
@@ -24,7 +24,7 @@
 ## Project Structure
 
 ```
-Niriya/
+viriya/
 â”œâ”€â”€ api-contract.json          â† H0: FEâ†”BE contract, frozen at hour 0
 â”œâ”€â”€ backend/                   â† FastAPI (Python) â†’ Render/Railway
 â””â”€â”€ frontend/                  â† React/Vite (TypeScript) â†’ Vercel

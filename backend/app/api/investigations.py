@@ -38,9 +38,11 @@ async def start_investigation(body: StartInvestigationRequest, user=Depends(requ
 
 @router.get("/investigations/{investigation_id}/stream")
 async def stream_investigation(investigation_id: str, user=Depends(require_auth)):
+    from fastapi import HTTPException
     inv = _investigations.get(investigation_id)
     if not inv:
-        from fastapi import HTTPException
+        raise HTTPException(404, "Investigation not found")
+    if inv["workspace_id"] != user["workspace_id"]:
         raise HTTPException(404, "Investigation not found")
 
     async def event_stream():

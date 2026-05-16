@@ -708,6 +708,120 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
 
 Owner + scope columns exist in the schema now. The resolver ("Finance defined this differently — which applies?") is **explicitly out of MVP** (PRD §4, §7, §12) and answered on the whiteboard: definitions are owned + scoped, conflicts surface a chooser instead of last-write-wins.
 
+### 7.5 Appwrite Console Setup — complete step-by-step **[BUILD — P3 prerequisite]**
+
+This section is for the person setting up Appwrite. Everything here maps to `backend/.env` keys. Do this before P3 work starts.
+
+#### Step 0 — Create project
+
+1. Go to [cloud.appwrite.io](https://cloud.appwrite.io) → **Create project** → name it `viriya` (or anything).
+2. Copy the **Project ID** → paste into `APPWRITE_PROJECT_ID=` in `backend/.env`.
+3. Go to **Settings → API Keys** → **Create API key** → enable **Databases** scope → copy → paste into `APPWRITE_API_KEY=`.
+4. Leave `APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1` as-is.
+
+#### Step 1 — Create database
+
+Go to **Databases** → **Create database** → name it `viriya_db`.  
+Copy the **Database ID** → paste into `APPWRITE_DB_ID=` in `backend/.env`.
+
+#### Step 2 — Create collections
+
+Create **5 collections** in this database. For each one, use the exact **Collection ID** shown (this is what goes in `.env` — defaults already match).
+
+---
+
+**Collection 1 — `workspaces`** (`APPWRITE_COLLECTION_WORKSPACES`)
+
+| Attribute key | Type | Size | Required |
+|---|---|---|---|
+| `user_id` | String | 36 | Yes |
+| `name` | String | 100 | Yes |
+
+No indexes needed beyond Appwrite's auto `$id`.
+
+---
+
+**Collection 2 — `connections`** (`APPWRITE_COLLECTION_CONNECTIONS`)
+
+| Attribute key | Type | Size | Required |
+|---|---|---|---|
+| `workspace_id` | String | 36 | Yes |
+| `kind` | String | 20 | Yes |
+| `label` | String | 100 | Yes |
+| `schema` | String | 65535 | Yes |
+
+**Index:** Key index on `workspace_id` (name it `workspace_id_idx`).
+
+---
+
+**Collection 3 — `semantic_definitions`** (`APPWRITE_COLLECTION_SEMANTIC`)
+
+| Attribute key | Type | Size | Required |
+|---|---|---|---|
+| `workspace_id` | String | 36 | Yes |
+| `term` | String | 200 | Yes |
+| `natural_language` | String | 2000 | Yes |
+| `definition_sql` | String | 65535 | Yes |
+| `source` | String | 50 | Yes |
+| `materiality` | String | 20 | Yes |
+
+**Indexes:** Key index on `workspace_id`, key index on `term`.
+
+---
+
+**Collection 4 — `investigations`** (`APPWRITE_COLLECTION_INVESTIGATIONS`)
+
+| Attribute key | Type | Size | Required |
+|---|---|---|---|
+| `workspace_id` | String | 36 | Yes |
+| `connection_id` | String | 36 | Yes |
+| `question` | String | 2000 | Yes |
+| `status` | String | 20 | Yes |
+
+**Index:** Key index on `workspace_id`.
+
+> Can be created now but is not used until P3 (currently in-memory).
+
+---
+
+**Collection 5 — `slack_installations`** (`APPWRITE_COLLECTION_SLACK_INSTALLATIONS`)
+
+| Attribute key | Type | Size | Required |
+|---|---|---|---|
+| `slack_team_id` | String | 20 | Yes |
+| `slack_team_name` | String | 100 | Yes |
+| `slack_bot_token` | String | 200 | Yes |
+| `appwrite_workspace_id` | String | 36 | Yes |
+| `default_connection_id` | String | 36 | No |
+
+**Index:** Unique key index on `slack_team_id` (name it `slack_team_id_idx`).
+
+---
+
+#### Step 3 — Set permissions on each collection
+
+For each collection: **Settings → Permissions → Add role → Any** with **Read + Create + Update** (no Delete for safety). The backend API key bypasses this anyway, but it prevents 401 errors if you test from the console.
+
+#### Step 4 — Enable email/password auth
+
+Go to **Auth → Settings** → enable **Email/Password** provider. This is what the viriya login page uses.
+
+#### Step 5 — Verify `.env` is complete
+
+```env
+APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=<your-project-id>
+APPWRITE_API_KEY=<your-api-key>
+APPWRITE_DB_ID=<your-database-id>
+APPWRITE_COLLECTION_WORKSPACES=workspaces
+APPWRITE_COLLECTION_CONNECTIONS=connections
+APPWRITE_COLLECTION_SEMANTIC=semantic_definitions
+APPWRITE_COLLECTION_INVESTIGATIONS=investigations
+APPWRITE_COLLECTION_SLACK_INSTALLATIONS=slack_installations
+```
+
+The collection ID values are the exact **Collection ID** strings you used when creating each collection in step 2. If you used the names exactly as shown above, they already match the `.env` defaults.
+
 ---
 
 ## 8. Cross-cutting — Proactive Monitoring **[STUB — architecture real, timing faked]**

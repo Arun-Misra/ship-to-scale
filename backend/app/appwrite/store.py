@@ -30,13 +30,17 @@ async def save_connection(workspace_id: str, kind: str, label: str, schema: dict
     return doc["$id"]
 
 
-async def get_connection(connection_id: str) -> dict | None:
+async def get_connection(connection_id: str, workspace_id: str) -> dict | None:
+    """Returns the connection only if it belongs to the given workspace."""
     try:
-        return await anyio.to_thread.run_sync(lambda: db.get_document(
+        doc = await anyio.to_thread.run_sync(lambda: db.get_document(
             database_id=DB,
             collection_id=C.appwrite_collection_connections,
             document_id=connection_id,
         ))
+        if doc.get("workspace_id") != workspace_id:
+            return None
+        return doc
     except Exception:
         return None
 
