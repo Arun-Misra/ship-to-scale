@@ -20,14 +20,23 @@ from app.config import settings
 
 _action_adapter: TypeAdapter[Action] = TypeAdapter(Action)
 
-_client: genai.Client | None = None
+# Round-robin across all configured API keys to spread RPM/RPD load.
+# Add GEMINI_API_KEY_2, GEMINI_API_KEY_3 … to .env for extra quota.
+_clients: list[genai.Client] = []
+_client_index = 0
 
 
 def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=settings.gemini_api_key)
-    return _client
+    global _clients, _client_index
+    if not _clients:
+        extra = [k.strip() for k in settings.gemini_extra_api_keys.split(",") if k.strip()]
+        keys = [settings.gemini_api_key] + extra
+        _clients = [genai.Client(api_key=k) for k in keys if k]
+        if not _clients:
+            raise RuntimeError("No GEMINI_API_KEY configured")
+    client = _clients[_client_index % len(_clients)]
+    _client_index += 1
+    return client
 
 _ACTION_SCHEMA = {
     "type": "object",
