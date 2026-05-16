@@ -144,10 +144,26 @@ async def create_slack_installation(
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
+async def get_connections_for_workspace(workspace_id: str) -> list[dict]:
+    try:
+        result = await anyio.to_thread.run_sync(lambda: db.list_documents(
+            database_id=DB,
+            collection_id=C.appwrite_collection_connections,
+            queries=[Query.equal("workspace_id", workspace_id)],
+        ))
+        return result["documents"]
+    except Exception:
+        return []
+
+
 async def get_dashboard_summary(workspace_id: str) -> dict:
-    # TODO P5: aggregate connections + recent investigations
+    connections = await get_connections_for_workspace(workspace_id)
     return {
-        "connected_sources": 0,
+        "connected_sources": len(connections),
+        "connections": [
+            {"id": c["$id"], "label": c.get("label", ""), "kind": c.get("kind", "")}
+            for c in connections
+        ],
         "last_query_at": None,
         "key_metrics": [],
         "recent_investigations": [],

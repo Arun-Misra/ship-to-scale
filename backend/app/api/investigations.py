@@ -11,12 +11,9 @@ from pydantic import BaseModel
 from app.appwrite.auth import require_auth
 from app.agent.loop import run_investigation
 from app.agent.replay import replay_fixture
+from app.state import investigations as _investigations
 
 router = APIRouter()
-
-# In-memory store of running/completed investigations keyed by investigation_id.
-# Replace with Appwrite persistence in P3.
-_investigations: dict[str, dict] = {}
 
 
 class StartInvestigationRequest(BaseModel):
