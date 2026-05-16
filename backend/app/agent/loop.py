@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from app.agent.schemas import (
     Action, SqlQueryAction, ConcludeAction,
     Observation, StepStartEvent, StepEndEvent, FinalEvent, ErrorEvent,
-    ChartConfig,
 )
 from app.agent.sse import sse_struct, sse_reasoning, sse_keepalive
 from app.agent.executor import explain_sql, execute_sql
@@ -44,7 +43,16 @@ async def run_investigation(
         step_budget = settings.agent_step_budget
         last_sql_result: tuple[list[str], list[list]] | None = None  # (columns, preview)
 
-        keepalive_task = asyncio.create_task(_keepalive_loop())
+        loop = asyncio.get_event_loop()
+        last_ka_at = loop.time()
+
+        def _keepalive() -> bytes | None:
+            nonlocal last_ka_at
+            now = loop.time()
+            if now - last_ka_at >= 15:
+                last_ka_at = now
+                return sse_keepalive()
+            return None
 
         for step in range(1, step_budget + 1):
             retry_budget = settings.agent_retry_budget_per_step
@@ -55,6 +63,8 @@ async def run_investigation(
             reasoning_prompt = _build_reasoning_prompt(system_prompt, question, observations)
             async for token in stream_reasoning(reasoning_prompt):
                 yield sse_reasoning(token)
+                if (ka := _keepalive()):
+                    yield ka
 
             # Structured action — Pydantic validated
             action_prompt = _build_action_prompt(system_prompt, question, observations)
@@ -103,7 +113,6 @@ async def run_investigation(
                         definition_receipts=_build_receipts(semantic_defs),
                     ),
                 )
-                keepalive_task.cancel()
                 return
 
             # sql_query action — EXPLAIN pre-flight
@@ -122,6 +131,8 @@ async def run_investigation(
             # Execute in read-only sandbox
             observation = await asyncio.to_thread(execute_sql, session.con, step, action)
             yield sse_struct("observation", observation)
+            if (ka := _keepalive()):
+                yield ka
             observations.append(observation)
 
             if observation.status == "ok" and observation.columns and observation.preview:
@@ -130,7 +141,6 @@ async def run_investigation(
             yield sse_struct("step_end", StepEndEvent(step=step))
 
         # Step budget exhausted — graceful partial
-        keepalive_task.cancel()
         yield sse_struct(
             "final",
             FinalEvent(
@@ -148,13 +158,6 @@ async def run_investigation(
         yield sse_struct("error", ErrorEvent(code="agent_error", message=str(e)))
     finally:
         session.close()
-
-
-async def _keepalive_loop():
-    while True:
-        await asyncio.sleep(15)
-        # Caller yields keepalive — this task is a signal; the loop handles it
-        # TODO: wire keepalive bytes into the generator properly
 
 
 def _build_reasoning_prompt(system: str, question: str, observations: list) -> str:
