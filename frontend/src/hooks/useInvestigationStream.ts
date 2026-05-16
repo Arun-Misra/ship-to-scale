@@ -114,7 +114,11 @@ export function useInvestigationStream() {
             // All structured events are guaranteed complete JSON (backend invariant)
             const payload = JSON.parse(dataStr);
             if (eventType === "step_start") currentStep.current = payload.step;
-            dispatch({ type: eventType as StreamAction["type"], payload } as StreamAction);
+            // Inject current step into action payload — backend Action schemas don't include a step field
+            const enriched = eventType === "action"
+              ? { ...payload, step: currentStep.current }
+              : payload;
+            dispatch({ type: eventType as StreamAction["type"], payload: enriched } as StreamAction);
           }
         }
       }

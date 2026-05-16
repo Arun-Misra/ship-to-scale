@@ -124,12 +124,14 @@ export interface Signal {
 // Dashboard types
 export interface DashboardSummary {
   connected_sources: number;
+  connections: Array<{ id: string; label: string; kind: string }>;
   last_query_at: string | null;
   key_metrics: Array<{ label: string; value: string; trend: string | null }>;
   recent_investigations: Array<{
     id: string;
     question: string;
+    status: string;
     verdict: Verdict | null;
-    created_at: string;
+    conclusion: string | null;
   }>;
 }
