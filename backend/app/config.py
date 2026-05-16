@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     gemini_api_key: str = ""
+    gemini_model: str = "gemma-4-31b-it"
 
     appwrite_endpoint: str = "https://cloud.appwrite.io/v1"
     appwrite_project_id: str = ""

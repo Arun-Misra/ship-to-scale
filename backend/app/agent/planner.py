@@ -1,8 +1,9 @@
 """
-P2 — LLM integration (Gemini 2.0 Flash). Generates Action JSON and reasoning tokens.
+P2 — LLM integration. Generates Action JSON and reasoning tokens.
+Model is configurable via GEMINI_MODEL env var (default: gemma-3-27b-it).
 Owner: BE
 
-CRITICAL — Gemini markdown JSON trap:
+CRITICAL — JSON markdown trap:
 Primary fix: response_mime_type="application/json" + response_schema
 Fallback: extract_json() regex strip before every model_validate_json()
 """
@@ -47,7 +48,7 @@ def extract_json(text: str) -> str:
 
 
 def build_system_prompt(schema_graph: dict, semantic_defs: list[dict]) -> str:
-    return f"""You are DataPilot's autonomous analyst agent. You investigate data questions by writing SQL queries and reasoning about results.
+    return f"""You are Niriya's autonomous analyst agent. You investigate data questions by writing SQL queries and reasoning about results.
 
 Schema:
 {schema_graph}
@@ -68,7 +69,7 @@ Rules:
 async def stream_reasoning(prompt: str) -> AsyncIterator[str]:
     """Stream free-text reasoning tokens. These are display-only — never parsed for control flow."""
     for chunk in _get_client().models.generate_content_stream(
-        model="gemini-2.0-flash",
+        model=settings.gemini_model,
         contents=prompt,
     ):
         if chunk.text:
@@ -81,7 +82,7 @@ def generate_action(prompt: str) -> Action:
     Falls back to extract_json() strip before model_validate_json().
     """
     response = _get_client().models.generate_content(
-        model="gemini-2.0-flash",
+        model=settings.gemini_model,
         contents=prompt,
         config=GenerateContentConfig(
             response_mime_type="application/json",

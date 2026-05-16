@@ -28,7 +28,7 @@ export default function SemanticPage() {
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold mb-2">Company Brain</h1>
-      <p className="text-sm text-gray-400 mb-6">Definitions DataPilot has learned about your business. It never asks the same question twice.</p>
+      <p className="text-sm text-gray-400 mb-6">Definitions Niriya has learned about your business. It never asks the same question twice.</p>
       <div className="space-y-3">
         {defs.map((d) => (
           <div key={d.$id} className="p-4 bg-gray-900 rounded-lg border border-gray-800">
