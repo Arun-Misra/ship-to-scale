@@ -13,14 +13,10 @@ const links = [
 export function Sidebar() {
   return (
     <aside className="flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950/95 backdrop-blur">
-      <div className="flex items-center gap-2 px-4 py-6">
-        <span
-          className="inline-block h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.7)]"
-          aria-hidden="true"
-        />
-        <div className="leading-none">
-          <span className="block text-base font-mono tracking-[0.22em] text-gray-100 uppercase">viriya</span>
-          <span className="mt-1 block text-[10px] uppercase tracking-[0.3em] text-gray-500">observability console</span>
+      <div className="flex items-center gap-2.5 p-5">
+        <div className="flex items-center gap-2.5">
+          <img src="/viriya-logo.png" alt="viriya" className="h-8 w-auto max-w-full object-contain select-none" />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.6)]" aria-hidden="true" />
         </div>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-2">
