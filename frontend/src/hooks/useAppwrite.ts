@@ -10,6 +10,13 @@ const client = new Client()
   .setProject(import.meta.env.VITE_APPWRITE_PROJECT_ID ?? "");
 
 const account = new Account(client);
+const DEV_BYPASS_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS_AUTH === "true";
+
+const DEV_SESSION: AppwriteSession = {
+  userId: "local-dev-user",
+  jwt: "local-dev-jwt",
+  workspaceId: "local-dev-workspace",
+};
 
 export interface AppwriteSession {
   userId: string;
@@ -22,6 +29,12 @@ export function useAppwrite() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (DEV_BYPASS_AUTH) {
+      setSession(DEV_SESSION);
+      setLoading(false);
+      return;
+    }
+
     account.getSession("current")
       .then(async (s) => {
         const jwt = await account.createJWT();
@@ -33,6 +46,11 @@ export function useAppwrite() {
   }, []);
 
   const login = async (email: string, password: string) => {
+    if (DEV_BYPASS_AUTH) {
+      setSession(DEV_SESSION);
+      return;
+    }
+
     await account.createEmailPasswordSession(email, password);
     const s = await account.getSession("current");
     const jwt = await account.createJWT();
@@ -41,6 +59,11 @@ export function useAppwrite() {
   };
 
   const logout = async () => {
+    if (DEV_BYPASS_AUTH) {
+      setSession(null);
+      return;
+    }
+
     await account.deleteSession("current");
     setSession(null);
   };

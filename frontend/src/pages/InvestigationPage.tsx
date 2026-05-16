@@ -9,7 +9,6 @@ import { useAppwrite } from "@/hooks/useAppwrite";
 import { useInvestigationStream } from "@/hooks/useInvestigationStream";
 import { startInvestigation } from "@/api/client";
 import { ChatInput } from "@/components/investigation/ChatInput";
-import { ReasoningPanel } from "@/components/investigation/ReasoningPanel";
 import { StepCard } from "@/components/investigation/StepCard";
 import { FinalReport } from "@/components/investigation/FinalReport";
 import { ErrorBanner } from "@/components/shared/ErrorBanner";
@@ -41,32 +40,37 @@ export default function InvestigationPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-800">
+      <div className="sticky top-0 z-10 bg-gray-950 border-b border-gray-800 p-4">
         <ChatInput onSubmit={handleAsk} disabled={state.isStreaming || submitting} />
       </div>
 
       {state.error && <ErrorBanner message={state.error} />}
 
-      <div className="flex-1 overflow-hidden flex gap-0">
-        {/* Left: streamed reasoning — the spectator view */}
-        {(allReasoning || state.isStreaming) && (
-          <div className="w-80 border-r border-gray-800 overflow-y-auto">
-            <ReasoningPanel text={allReasoning} isStreaming={state.isStreaming} />
-          </div>
-        )}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="w-[320px] bg-gray-900 border-r border-gray-800 p-4 font-mono text-sm text-gray-300 flex flex-col overflow-y-auto">
+          <div className="text-xs uppercase tracking-wide text-gray-500 mb-3">Reasoning Stream</div>
+          {allReasoning ? (
+            <pre className="whitespace-pre-wrap text-xs leading-relaxed">{allReasoning}</pre>
+          ) : (
+            <div>
+              &gt; Waiting for query...
+              <span className="cursor-blink">▊</span>
+            </div>
+          )}
+        </div>
 
-        {/* Right: steps + final */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 bg-gray-950/50 p-8 flex items-center justify-center text-gray-500 overflow-y-auto">
+          <div className="w-full max-w-4xl space-y-3">
           {state.steps.map((step) => (
             <StepCard key={step.step} step={step} />
           ))}
           {state.final && <FinalReport result={state.final} />}
           {!state.steps.length && !state.isStreaming && (
-            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-              Ask a question to start an investigation.
-              <br />Try: "Why did revenue drop last week?"
+              <div className="text-center">
+              Connected to production database. Ready to investigate.
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
