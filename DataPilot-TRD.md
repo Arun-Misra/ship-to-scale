@@ -139,6 +139,7 @@ Per PRD §8.1 build order: this contract is produced **before any other code**. 
 | `GET` | `/semantic` | The workspace's captured definitions (the moat, made visible). Read-only. | [BUILD] |
 | `GET` | `/dashboard` | Summary for the dashboard: connected sources count, last-query timestamp, key metric snapshots, recent investigations. | [BUILD] |
 | `POST` | `/slack/events` | Slack Events API webhook receiver — verifies Slack signature, parses `app_mention` / `message` events, enqueues for the agent. | [BUILD] |
+| `GET` | `/slack/oauth/callback` | Slack OAuth install callback — exchanges `code` for `bot_token`, writes `slack_installations` document, redirects to dashboard. | [BUILD] |
 
 ### 2.3 The streaming wire format — **prevents the UI-crash trap by design [BUILD]**
 
@@ -170,14 +171,76 @@ event: step_end
 data: {"step":1}
 
 event: final
-data: {"investigation_id":"...","verdict":"confirmed","root_cause":"...","confidence":"medium","recommended_action":"...","charts":[...],"definition_receipts":[...]}
+data: {"investigation_id":"...","verdict":"confirmed","root_cause":"...","confidence":"medium","recommended_action":"...","chart":{"chart_type":"line","x_axis":"wk","y_axis":"revenue","series_label":"Revenue"},"data":[["2026-01-06",184320.0],...],"definition_receipts":[...]}
 ```
 
 **Frontend contract (enforced):**
-- On `reasoning`: append `data` verbatim to the live thought panel. No `JSON.parse`. Ever.
-- On any structured event: `JSON.parse(data)` is guaranteed to succeed because the backend guarantees completeness. The parser is *not* wrapped in defensive partial-JSON logic — that logic is intentionally absent to prove the invariant holds.
-- On `error`: render the graceful partial answer (§5.5). Never a stack trace.
-- Heartbeat: `: keepalive\n\n` comment every 15s so proxies (Render/Vercel) don't drop the connection.
+- **Do NOT use the native `EventSource` API.** The browser's `EventSource` auto-reconnects on any dropped packet — for a replayed stream with no server-side cursor, this restarts the stream from step 1, duplicating all reasoning output and charts in the UI. Use `fetch` + `ReadableStream` + `AbortController` instead for absolute control.
+
+**The zombie-stream trap:** if the `while(true)` reader runs inside a `useEffect` or submit handler without cleanup, and the user navigates away or double-clicks "Ask", the old reader keeps running in the background. It tries to update unmounted React state, throws memory-leak warnings, and can corrupt the reasoning panel if a second stream fires concurrently. The `AbortController` is mandatory — not optional.
+
+**The controller must live in a `useRef`** so both the `useEffect` cleanup and the new-question submit handler reference the same instance. A local variable is not sufficient — a double-click creates a new controller while cleanup still holds the old one.
+
+```typescript
+// At component level — not inside the handler
+const abortRef = useRef<AbortController | null>(null);
+
+async function startStream(id: string, jwt: string) {
+  // Abort any in-flight stream before starting a new one (double-click safe)
+  abortRef.current?.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
+
+  try {
+    const response = await fetch(`/api/v1/investigations/${id}/stream`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+      signal: controller.signal,   // ← mandatory
+    });
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop()!;  // keep incomplete trailing frame
+
+      for (const frame of frames) {
+        const eventLine = frame.match(/^event: (.+)$/m)?.[1];
+        const dataLine  = frame.match(/^data: (.+)$/ms)?.[1];
+        if (!eventLine || !dataLine) continue;
+
+        if (eventLine === "reasoning") {
+          appendReasoning(dataLine.replace(/\\n/g, "\n"));
+        } else {
+          dispatch(eventLine, JSON.parse(dataLine));  // guaranteed complete
+        }
+      }
+    }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return;  // clean exit — user navigated away or fired a new question. Not an error.
+    }
+    renderError("Stream connection lost. Please try again.");
+  }
+}
+
+// In the useEffect that owns the stream:
+useEffect(() => {
+  startStream(investigationId, jwt);
+  return () => { abortRef.current?.abort(); };   // cleanup on unmount
+}, [investigationId]);
+```
+
+- On `reasoning`: `appendReasoning` — append to the live thought panel. No `JSON.parse`.
+- On any structured event: `JSON.parse(dataLine)` is guaranteed to succeed — backend invariant.
+- On `AbortError`: silent clean exit. Never show an error to the user.
+- On any other error: show the graceful partial message (§5.5). Never a stack trace.
+- Heartbeat: `: keepalive\n\n` comment every 15s so proxies (Render/Vercel) don't drop the connection. The reader skips frames with no `event:`/`data:` silently.
 
 **Backend invariant (enforced by a single chokepoint):** all structured events go through one function:
 
@@ -228,16 +291,33 @@ The schema graph is the grounding context handed to the agent and to `EXPLAIN` v
 
 DataPilot **never writes to the source, never applies fixes, never deletes or merges rows.** The data quality layer is a pure read: scan, analyse, report. The customer's database looks identical before and after connecting. This is a product decision (trust must be earned before touching data) and a technical invariant (all access is read-only by construction — §3.1, §6.2).
 
-### 4.2 What the scan does
+### 4.2 What the scan does — and the pushdown trap **[BUILD — non-negotiable]**
 
-Runs once on connect, re-runnable on demand. Executes a set of read-only diagnostic SQL queries against the attached schema via DuckDB:
+**The trap:** DuckDB pushes query predicates down to Postgres when using `ATTACH ... (TYPE postgres)`. A regex check or fuzzy-string comparison against a 2M-row production table runs as a full table scan on the customer's live Postgres — hanging the endpoint indefinitely and degrading their DB. This must be prevented structurally, not just carefully.
+
+**The fix — two-step sample approach:**
+
+1. **Pull a bounded sample into DuckDB memory first.** Every diagnostic query fetches at most 5,000 rows from Postgres using `LIMIT 5000`. This is a fast, index-friendly Postgres operation. Once those rows are in DuckDB's in-memory space, all subsequent checks run locally in DuckDB — regex, fuzzy matching, cardinality analysis — with zero further load on Postgres.
+
+2. **Never run fuzzy/regex directly over the attached Postgres.** Fuzzy duplicate detection especially must only run on the in-memory sample.
+
+```python
+# Safe pattern — pull sample first, analyse locally
+SAMPLE_SQL = "SELECT {cols} FROM src.{table} LIMIT 5000"
+con.execute(f"CREATE TEMP TABLE _sample AS ({SAMPLE_SQL})")
+# All checks now run on _sample — DuckDB in-memory, no Postgres load
+```
+
+> Note on TABLESAMPLE: DuckDB's Postgres scanner may not push `TABLESAMPLE` to Postgres reliably. `LIMIT 5000` is the safe, guaranteed-pushdown path.
+
+Runs once on connect, re-runnable on demand. Checks performed on the in-memory sample:
 
 | Check | What it finds | Output |
 |---|---|---|
-| **Date format inconsistency** | Columns with mixed date formats (e.g. `01/02/23` and `2023-01-02` in the same column) | Table, column, example values, row count affected |
+| **Date format inconsistency** | Columns with mixed date formats (e.g. `01/02/23` and `2023-01-02` in the same column) | Table, column, example values, estimated row count affected |
 | **Text-as-number** | Numeric columns stored as text (e.g. `"1,200"`, `"$99.00"`) | Table, column, example values |
-| **Unexpected nulls** | Columns with high null % in fields expected to be populated | Table, column, null % |
-| **Likely duplicates** | Row pairs with high fuzzy similarity on key identifier columns (name, email, ID) | Pair examples, similarity score, count |
+| **Unexpected nulls** | Columns with high null % in fields expected to be populated | Table, column, null % in sample |
+| **Likely duplicates** | Row pairs with high fuzzy similarity on key identifier columns (name, email, ID) — run on sample in DuckDB only | Pair examples, similarity score |
 | **Cardinality anomalies** | Columns that look like enums but have unexpected variants (e.g. `"Male"`, `"male"`, `"M"`) | Table, column, value distribution |
 
 ### 4.3 API response shape
@@ -299,15 +379,21 @@ PRD §10: "Never cut: the streamed agent loop. It is the company." This section 
 
 ### 5.2 Structured schemas (Pydantic v2) — **[BUILD]**
 
+**Foundational principle: treat every LLM output as untrusted user input.** The model is a probabilistic text generator. It will occasionally add extra fields, embed reasoning inside the action JSON, nest objects unexpectedly, or produce a string where an int is required. The Pydantic schemas are the physics of the sandbox — they define what can exist, and anything outside those bounds is rejected immediately and fed back as a corrective observation.
+
 The rigid-action / free-reasoning split (PRD §4 L3, §8.1) is enforced here. `reasoning` is **never a field the control flow reads** — it is streamed to the UI as opaque text and discarded by the planner.
+
+**`extra='forbid'` is mandatory on all Action models.** If the model smuggles a `reasoning` field into the action JSON, Pydantic must reject it — not silently ignore it. Without `extra='forbid'`, Pydantic v2 silently drops unknown fields by default, which masks the model misbehaving.
 
 ```python
 class SqlQueryAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # reject unknown fields — mandatory
     type: Literal["sql_query"]
     sql: str
     intent: str  # short, for the receipt — NOT control flow
 
 class ConcludeAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # reject unknown fields — mandatory
     type: Literal["conclude"]
     verdict: Literal["confirmed", "refuted", "inconclusive"]
     root_cause: str
@@ -320,6 +406,7 @@ Action = Annotated[
 ]
 
 class Observation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     step: int
     status: Literal["ok", "explain_error", "exec_error", "validation_error",
                     "timeout", "row_cap"]
@@ -330,7 +417,7 @@ class Observation(BaseModel):
     error: str | None = None               # fed back as corrective context
 ```
 
-The model is prompted to emit a JSON object that parses into `Action`. **Free-text reasoning is requested on a separate channel** (streamed before the action) and is *never* fed to the discriminated-union parser.
+The model is prompted to emit a JSON object that parses into `Action`. **Free-text reasoning is requested on a separate channel** (streamed before the action) and is *never* fed to the discriminated-union parser. `ValidationError` from any of the above → the error message is the corrective observation, loop continues, shared retry budget decremented.
 
 ### 5.3 Validation → EXPLAIN → sandbox (P1/P2) **[BUILD]**
 
@@ -360,6 +447,78 @@ PRD §8.1: independent budgets multiply and explode the loop. Therefore:
 - Gemini 2.0 Flash. Two prompt roles per step: (a) free-text reasoning (streamed token-by-token to `event: reasoning`), (b) a constrained "emit the next Action as JSON" call.
 - Grounding context: the `SchemaGraph` (§3.2) + resolved semantic definitions (§7) + prior observations. Raw row data is summarized, not dumped, to bound tokens.
 - Live LLM calls in the demo are **off the critical timing path** — see §10.
+
+### 5.6.1 Gemini markdown JSON trap — and the fix **[BUILD — non-negotiable]**
+
+**The trap:** Even when explicitly prompted to output only raw JSON, Gemini 2.0 Flash frequently wraps output in Markdown fences:
+
+````
+```json
+{ "type": "sql_query", "sql": "..." }
+```
+````
+
+`Action.model_validate_json()` receives the raw string including backticks and throws `ValidationError` immediately. This burns the shared retry budget, Gemini apologies in its next response (also in text), and the budget exhausts in seconds.
+
+**Primary fix — use Gemini's structured output mode:**
+
+```python
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents=prompt,
+    config=GenerateContentConfig(
+        response_mime_type="application/json",   # ← forces raw JSON, no fences
+        response_schema=action_schema,           # ← JSON schema derived from Action
+    ),
+)
+action = Action.model_validate_json(response.text)
+```
+
+`response_mime_type="application/json"` instructs Gemini at the API level to emit raw JSON. This is the cleanest fix — the markdown fence problem disappears entirely.
+
+**Fallback strip — defence-in-depth for any model that still wraps:**
+
+```python
+import re
+
+def extract_json(text: str) -> str:
+    text = text.strip()
+    # Handles ```json ... ``` and ``` ... ``` with any whitespace variation
+    m = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    return m.group(1).strip() if m else text
+
+action = Action.model_validate_json(extract_json(response.text))
+```
+
+The regex approach is more robust than line-splitting (`split("\n")[1:-1]`) which breaks when the closing fence has trailing whitespace or the JSON has a blank last line. Apply both: structured output mode as primary, `extract_json` as the fallback before every `model_validate_json` call.
+
+### 5.7 Chart synthesis — lightweight config, never raw rows to LLM **[BUILD — non-negotiable]**
+
+**The trap:** the agent's final SQL query may return up to 5,000 rows (the sandbox cap). Feeding a 5,000-row JSON array into a Gemini prompt to ask "generate a chart config" consumes the entire context window, spikes latency to 30+ seconds, and will fail outright. This must never happen.
+
+**The rule:** the LLM never sees more than the 50-row `preview`. Chart synthesis is based on column headers + preview only. The agent emits a `ChartConfig` as part of `ConcludeAction` — a lightweight declarative spec:
+
+```python
+class ChartConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    chart_type: Literal["line", "bar", "area", "scatter", "pie"]
+    x_axis: str        # column name
+    y_axis: str        # column name
+    series_label: str  # human label for the legend
+
+class ConcludeAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["conclude"]
+    verdict: Literal["confirmed", "refuted", "inconclusive"]
+    root_cause: str
+    confidence: Literal["low", "medium", "high"]
+    recommended_action: str
+    chart: ChartConfig | None = None   # None if no chart is relevant
+```
+
+The `final` SSE event carries both `chart` (the config) and `data` (the 50-row `preview` from the last relevant query step). The frontend binds them: Recharts uses `data` as the data array, `chart.x_axis`/`chart.y_axis` as the axis keys. No separate data fetch required.
+
+**Why 50 rows is enough for charts:** a correctly-written agent query GROUPs and aggregates before returning (weekly revenue = 13 rows, monthly cohorts = 12 rows). If a query returns 5,000 raw rows, the `row_cap` observation already tells the agent to aggregate instead of scan. 5,000-row chart results indicate a bad agent query, which the EXPLAIN pre-flight and row_cap feedback should have caught.
 
 ---
 
@@ -410,6 +569,134 @@ semantic_definition {
 - Backend verifies the Appwrite JWT on every request (jwks/Appwrite SDK server-side). No backend session store; Appwrite is the source of truth.
 - A user belongs to ≥1 workspace; all data (connections, semantic defs, history, reports) is workspace-scoped. The agent loop is testable with **zero auth** (hardcoded workspace + local Postgres) so it is not blocked by P3/P4 (PRD §8.1 build order).
 
+### 7.2.1 The Appwrite async trap — mandatory thread wrapping **[BUILD — non-negotiable]**
+
+**The trap:** The official Appwrite Python SDK (`appwrite` on PyPI) is **strictly synchronous** — it uses the `requests` library under the hood. You cannot `await` Appwrite SDK methods. Two failure modes:
+
+- `await appwrite_db.get_installation(team_id)` → `TypeError` crash immediately.
+- Call without `await` inside an `async def` FastAPI route → blocks the entire ASGI event loop during the network round-trip. Every SSE stream stalls, every other user's request queues behind it. The single-process concurrency model collapses.
+
+**The fix:** wrap every Appwrite SDK call in `anyio.to_thread.run_sync()`. This pattern is already established in the TRD for DuckDB (§1.2) — apply it identically to all Appwrite calls:
+
+```python
+import anyio
+
+# Instead of:  result = appwrite_db.list_documents(...)
+# Use:
+result = await anyio.to_thread.run_sync(
+    lambda: appwrite_db.list_documents(
+        database_id=DB_ID,
+        collection_id=COLLECTION_ID,
+        queries=[Query.equal("slack_team_id", team_id)],
+    )
+)
+```
+
+**Alternative:** use `httpx.AsyncClient` to hit the Appwrite REST API directly (same endpoints, full async, no SDK dependency). Better for production; `anyio.to_thread` is sufficient for the hackathon.
+
+Every Appwrite call in this TRD — `get_installation`, `create_installation`, semantic store reads/writes, workspace lookups — is subject to this rule without exception.
+
+### 7.3 Slack tenant mapping — **`slack_installations` collection [BUILD — required for Slack to work at all]**
+
+**The gap:** Slack webhooks carry no Appwrite JWT. They carry a `team_id`. Without a mapping from `team_id` → `workspace_id` → `default_connection_id`, the agent loop has no context to run — it doesn't know whose database to query or which semantic store to load.
+
+**The fix:** a `slack_installations` Appwrite collection, written once during Slack OAuth install:
+
+```
+slack_installations {
+  $id
+  slack_team_id          (indexed, unique)
+  slack_team_name
+  slack_bot_token        (encrypted at rest — used for chat.postMessage)
+  appwrite_workspace_id  (FK → workspace)
+  default_connection_id  (FK → connections — the DB to query for this workspace)
+  installed_by_user_id
+  installed_at
+}
+```
+
+**The OAuth state trap — and the fix:** When the user clicks "Add to Slack" in the React app, they leave to Slack's auth page. When Slack redirects back to `/slack/oauth/callback`, it is a cross-origin browser redirect — **no Appwrite JWT is attached**. The backend has no idea which workspace to link the new `team_id` to without it.
+
+**Fix: the `state` nonce pattern.** Raw base64 of `workspace_id` in `state` is a CSRF vulnerability (an attacker can craft a URL with a victim's `workspace_id`). Use a nonce instead:
+
+```python
+# 1. React app calls this to get the install URL
+@app.get("/slack/install-url")
+async def slack_install_url(workspace_id: str, user=Depends(require_auth)):
+    nonce = secrets.token_urlsafe(16)
+    # Store nonce → workspace_id with a 10-minute TTL (in-memory dict or Appwrite)
+    pending_installs[nonce] = {"workspace_id": workspace_id, "expires": time() + 600}
+    url = (
+        f"https://slack.com/oauth/v2/authorize"
+        f"?client_id={SLACK_CLIENT_ID}"
+        f"&scope=app_mentions:read,chat:write,channels:history"
+        f"&state={nonce}"          # ← nonce, not workspace_id directly
+        f"&redirect_uri={CALLBACK_URL}"
+    )
+    return {"url": url}
+
+# 2. Slack redirects here after authorization
+@app.get("/slack/oauth/callback")
+async def slack_oauth_callback(code: str, state: str):
+    entry = pending_installs.pop(state, None)
+    if not entry or time() > entry["expires"]:
+        raise HTTPException(403, "Invalid or expired state")
+
+    # Exchange code for bot_token
+    resp = await slack_client.oauth_v2_access(code=code)
+    team_id   = resp["team"]["id"]
+    bot_token = resp["access_token"]
+
+    # Write the mapping
+    await appwrite_db.create_installation(
+        slack_team_id=team_id,
+        appwrite_workspace_id=entry["workspace_id"],
+        slack_bot_token=bot_token,
+    )
+    return RedirectResponse("/dashboard?slack=connected")
+```
+
+**Written during Slack OAuth install flow** — the flow above runs once per workspace install. The `state` nonce expires in 10 minutes and is one-time-use, preventing replay and CSRF.
+
+**Read in the event handler** (synchronously, before enqueuing):
+
+```python
+async def slack_events(request: Request, background_tasks: BackgroundTasks):
+    body = await request.body()
+    verify_slack_signature(body, request.headers)
+    payload = json.loads(body)
+
+    if payload.get("type") == "url_verification":
+        return {"challenge": payload["challenge"]}
+
+    event = payload.get("event", {})
+    if event.get("bot_id") or event.get("subtype") == "bot_message":
+        return {"status": "ok"}
+
+    team_id = payload.get("team_id")
+    installation = await appwrite_db.get_installation(team_id)  # ← the lookup
+    if not installation:
+        return {"status": "ok"}  # not installed for this team — silent drop
+
+    event_id = payload.get("event_id")
+    if is_duplicate(event_id):
+        return {"status": "ok"}
+    mark_seen(event_id)
+
+    background_tasks.add_task(
+        handle_slack_event,
+        question=event.get("text", ""),
+        channel=event.get("channel"),
+        thread_ts=event.get("ts"),
+        workspace_id=installation["appwrite_workspace_id"],
+        connection_id=installation["default_connection_id"],
+        bot_token=installation["slack_bot_token"],
+    )
+    return {"status": "ok"}
+```
+
+**Why not hardcode:** the full solution is ~30 minutes (OAuth callback + one Appwrite write). Hardcoding means you can't demo "install the bot in your workspace" — you lose the land-and-expand story. Build it properly.
+
 ### 7.3 The four mechanisms
 
 1. **Harvest [BUILD, honest scope]** — before guessing, mine existing DB views, query logs (where available), and the dbt manifest into `semantic_definition` rows with `source="harvested"|"dbt"`. **Strong for DB connections; explicitly weak for cold CSV — we do not overclaim** (PRD §4 L4, §12 cold-start).
@@ -436,15 +723,87 @@ PRD §4 cross-cutting, §10 item 7: **one pre-computed anomaly in a Signals feed
 
 The Slack bot is the primary day-to-day interface. Someone asks in a Slack channel or DM, the bot answers in the thread.
 
-### 9.1 How it works
+### 9.1 How it works — with raw body + signature verification **[BUILD — non-negotiable]**
 
 1. User types `@DataPilot what's our revenue this week?` in any channel the bot is added to.
-2. Slack sends an event to `POST /slack/events` (the Events API webhook).
-3. Backend verifies the Slack signature (HMAC-SHA256 on the raw request body + timestamp — mandatory, Slack rejects unverified apps).
-4. The question is routed to the same agent pipeline as the web chat (§5). For simple questions: L1 answer path. For "why" questions: L2 investigation.
-5. Response is posted back to the same thread via Slack Web API (`chat.postMessage`).
+2. Slack sends an event to `POST /slack/events`.
+3. Backend verifies the Slack HMAC-SHA256 signature **on the exact raw request bytes**.
+4. Question is routed to the same agent pipeline as the web chat (§5).
+5. Response posted back to the thread via `chat.postMessage`.
 
-### 9.2 Response format (v1 — text only)
+**The raw body trap:** standard FastAPI middleware (CORS, logging, compression) may consume or mutate the request body before the route handler sees it. If the body bytes are modified even slightly, the HMAC hash mismatches and Slack rejects 100% of legitimate events silently — the bot stops working with no error visible to users. Fix: read raw bytes first at the route level, verify signature, then parse JSON. Never call `await request.json()` before verification.
+
+**The timestamp check is mandatory** — without it, an attacker can replay captured valid requests indefinitely:
+
+```python
+import hashlib, hmac, time, json
+
+def verify_slack_signature(raw_body: bytes, headers: dict) -> None:
+    slack_signature  = headers.get("x-slack-signature", "")
+    slack_timestamp  = headers.get("x-slack-request-timestamp", "")
+
+    # Replay attack prevention — reject requests older than 5 minutes
+    if abs(time.time() - float(slack_timestamp)) > 300:
+        raise HTTPException(403, "Request timestamp too old")
+
+    sig_basestring = f"v0:{slack_timestamp}:{raw_body.decode('utf-8')}"
+    expected = "v0=" + hmac.new(
+        SLACK_SIGNING_SECRET.encode(),
+        sig_basestring.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, slack_signature):
+        raise HTTPException(403, "Invalid signature")
+
+@app.post("/slack/events")
+async def slack_events(request: Request, background_tasks: BackgroundTasks):
+    raw_body = await request.body()          # ← raw bytes first, always
+    verify_slack_signature(raw_body, request.headers)   # ← verify on raw bytes
+    payload = json.loads(raw_body)           # ← parse JSON only after verification
+
+    # ... rest of handler
+```
+
+`request.body()` in Starlette caches the bytes — calling it again later is safe. The rule is: **verify before parse, never parse before verify**.
+
+### 9.2 The bot self-loop trap **[BUILD — non-negotiable]**
+
+When the bot calls `chat.postMessage`, Slack fires a new `message` event back to `POST /slack/events`. Without filtering, the bot processes its own reply, calls the agent again, posts another answer, and loops indefinitely — filling the channel with recursive responses.
+
+**Fix:** check `bot_id` in the event payload before any other processing. Drop silently if it's from a bot (including our own bot):
+
+```python
+event = payload.get("event", {})
+if event.get("bot_id") or event.get("subtype") == "bot_message":
+    return {"status": "ok"}  # drop — our own reply or another bot
+```
+
+This check goes **before** the deduplication check and **before** enqueuing.
+
+### 9.3 thread_ts capture — must happen synchronously **[BUILD]**
+
+The background task needs `channel` and `thread_ts` from the original event to reply in-thread (so the answer appears as a reply, not a new top-level message). These must be extracted **synchronously inside the route handler** before returning 200, because the request object is gone by the time the background task runs.
+
+```python
+# Inside the route handler, before returning 200
+event = payload.get("event", {})
+channel = event.get("channel")
+thread_ts = event.get("ts")        # reply to this thread
+question  = event.get("text", "")
+
+background_tasks.add_task(
+    handle_slack_event,
+    question=question,
+    channel=channel,
+    thread_ts=thread_ts,
+)
+return {"status": "ok"}
+```
+
+`handle_slack_event` uses `thread_ts` when calling `chat.postMessage` so the response is threaded under the original question.
+
+### 9.4 Response format (v1 — text only)
 
 v1 responses are **plain text + numbers**. No Block Kit interactive components (roadmap). Format:
 
@@ -455,19 +814,61 @@ Revenue this week: $184,320
 Definition used: Revenue = SUM(order_total), orders placed Mon–Sun this week.
 ```
 
-For "why" questions that trigger the full investigation: the bot posts *"Investigating — this takes ~30s"*, runs the agent, then posts the summary. The full step-by-step reasoning is linked to the web dashboard (deep link to the investigation).
+For "why" questions that trigger the full investigation: the bot posts *"Investigating — this takes ~30s"* immediately (via a second `chat.postMessage` before the agent starts), runs the agent in the background, then posts the summary in the same thread. The full step-by-step reasoning is linked to the web dashboard via a deep link to the investigation.
 
-### 9.3 OAuth setup
+### 9.4.1 Ghost bot silent failure — mandatory try/except **[BUILD — non-negotiable]**
+
+`BackgroundTasks` run entirely outside the request lifecycle. If the agent loop hits an unhandled exception (Appwrite down, DuckDB OOM, Gemini timeout, `chat.postMessage` itself failing), the exception is swallowed into server logs. The user sees *"Investigating..."* and the bot disappears forever — they assume the product is broken.
+
+**Two distinct failure modes, one wrapper covers both:**
+- Failures *inside* the agent loop (bad SQL, step budget exhausted) → already handled by graceful-partial (§5.5), which posts a result.
+- Failures *outside* the loop (infra crash before the loop even starts, or `chat.postMessage` itself failing) → caught here.
+
+```python
+async def handle_slack_event(
+    question: str, channel: str, thread_ts: str,
+    workspace_id: str, connection_id: str, bot_token: str,
+):
+    try:
+        # Post the "investigating" acknowledgement immediately
+        await slack_post(bot_token, channel, thread_ts, "Investigating — this takes ~30s ⏳")
+
+        # Run the full agent pipeline
+        result = await run_investigation(
+            question=question,
+            workspace_id=workspace_id,
+            connection_id=connection_id,
+        )
+
+        # Post the answer
+        await slack_post(bot_token, channel, thread_ts, format_slack_result(result))
+
+    except Exception as e:
+        logger.error(f"Slack agent failure: {e}", exc_info=True)
+        # Always post a fallback — never go silent
+        try:
+            await slack_post(
+                bot_token, channel, thread_ts,
+                "I ran into an infrastructure issue querying the data. "
+                "Please check the dashboard for details."
+            )
+        except Exception:
+            pass  # if even the fallback post fails, log and move on
+```
+
+The inner `try/except` on the fallback `slack_post` prevents an exception in error-reporting from crashing the background task silently.
+
+### 9.5 OAuth setup
 
 - A Slack App with `app_mentions:read`, `channels:history`, `chat:write` scopes.
 - OAuth 2.0 install flow so any workspace can add the bot.
 - `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` in backend env.
 
-### 9.4 Outbound reports (unchanged)
+### 9.6 Outbound reports (unchanged)
 
 Weekly board report + anomaly alerts still post to a configured channel via `chat.postMessage`. Triggered by `POST /reports/weekly/dispatch` (manual in MVP, scheduler is roadmap).
 
-### 9.5 What is roadmap (not v1)
+### 9.7 What is roadmap (not v1)
 
 - Block Kit interactive buttons/menus
 - Slash commands (`/datapilot`)
