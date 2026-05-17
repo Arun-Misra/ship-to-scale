@@ -1,8 +1,16 @@
 /**
- * Typed fetch wrappers for all REST endpoints from api-contract.json.
+ * Typed fetch wrappers for all REST endpoints.
  * All functions throw on non-2xx responses.
  */
-import type { QualityReport, DashboardSummary, Signal, FinalResult } from "@/types";
+import type {
+  QualityReport,
+  DashboardSummary,
+  Signal,
+  FinalResult,
+  Connection,
+  SemanticDef,
+  InvestigationRecord,
+} from "@/types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
 
@@ -27,8 +35,20 @@ export async function getHealth() {
   return res.json();
 }
 
-export async function registerConnection(jwt: string, body: { kind: "postgres" | "demo"; dsn?: string; label: string }) {
-  return apiFetch<{ connection_id: string }>("/connections", jwt, { method: "POST", body: JSON.stringify(body) });
+// ── Connections ────────────────────────────────────────────────────────────────
+
+export async function getConnections(jwt: string): Promise<{ connections: Connection[] }> {
+  return apiFetch<{ connections: Connection[] }>("/connections", jwt);
+}
+
+export async function registerConnection(
+  jwt: string,
+  body: { kind: "postgres" | "demo"; dsn?: string; label: string }
+) {
+  return apiFetch<{ connection_id: string }>("/connections", jwt, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getSchema(jwt: string, connectionId: string) {
@@ -39,25 +59,65 @@ export async function getQualityReport(jwt: string, connectionId: string): Promi
   return apiFetch<QualityReport>(`/connections/${connectionId}/quality`, jwt);
 }
 
-export async function startInvestigation(jwt: string, body: { connection_id: string; question: string }) {
-  return apiFetch<{ investigation_id: string }>("/investigations", jwt, { method: "POST", body: JSON.stringify(body) });
+// ── Investigations ─────────────────────────────────────────────────────────────
+
+export async function startInvestigation(
+  jwt: string,
+  body: { connection_id: string; question: string }
+) {
+  return apiFetch<{ investigation_id: string }>("/investigations", jwt, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
-export async function getInvestigation(jwt: string, investigationId: string): Promise<FinalResult> {
-  return apiFetch<FinalResult>(`/investigations/${investigationId}`, jwt);
+export async function listInvestigations(jwt: string): Promise<{ investigations: InvestigationRecord[] }> {
+  return apiFetch<{ investigations: InvestigationRecord[] }>("/investigations", jwt);
 }
+
+export async function getInvestigation(jwt: string, investigationId: string): Promise<InvestigationRecord> {
+  return apiFetch<InvestigationRecord>(`/investigations/${investigationId}`, jwt);
+}
+
+// ── Signals ───────────────────────────────────────────────────────────────────
 
 export async function getSignals(jwt: string): Promise<{ signals: Signal[] }> {
   return apiFetch<{ signals: Signal[] }>("/signals", jwt);
 }
 
-export async function getSemanticDefs(jwt: string) {
-  return apiFetch("/semantic", jwt);
+// ── Semantic ──────────────────────────────────────────────────────────────────
+
+export async function getSemanticDefs(jwt: string): Promise<{ definitions: SemanticDef[] }> {
+  return apiFetch<{ definitions: SemanticDef[] }>("/semantic", jwt);
 }
+
+export async function createSemanticDef(
+  jwt: string,
+  body: {
+    term: string;
+    natural_language: string;
+    definition_sql: string;
+    source?: string;
+    materiality?: string;
+  }
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>("/semantic", jwt, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteSemanticDef(jwt: string, defId: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/semantic/${defId}`, jwt, { method: "DELETE" });
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export async function getDashboard(jwt: string): Promise<DashboardSummary> {
   return apiFetch<DashboardSummary>("/dashboard", jwt);
 }
+
+// ── Reports & Slack ───────────────────────────────────────────────────────────
 
 export async function dispatchWeeklyReport(jwt: string) {
   return apiFetch("/reports/weekly/dispatch", jwt, { method: "POST" });

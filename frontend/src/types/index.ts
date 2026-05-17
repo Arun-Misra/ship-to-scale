@@ -112,13 +112,52 @@ export interface QualityReport {
 }
 
 // Signal types
+export interface SignalInvestigation {
+  verdict: Verdict;
+  root_cause: string;
+  confidence: Confidence;
+  recommended_action: string;
+  chart: ChartConfig | null;
+  data: unknown[][];
+}
+
 export interface Signal {
   id: string;
-  metric: string;
-  description: string;
+  title: string;
+  details: string;
+  priority: "critical" | "warning" | "informational";
   detected_at: string;
-  investigation_id: string | null;
-  severity: Severity;
+  investigation: SignalInvestigation | null;
+}
+
+// Connection types
+export interface Connection {
+  id: string;
+  label: string;
+  kind: "postgres" | "demo";
+}
+
+// Semantic definition type
+export interface SemanticDef {
+  $id: string;
+  term: string;
+  natural_language: string;
+  definition_sql: string;
+  source: string;
+  materiality: string;
+}
+
+// Investigation record (list/history)
+export interface InvestigationRecord {
+  id: string;
+  question: string;
+  connection_id: string;
+  status: string;
+  verdict: Verdict | null;
+  root_cause: string | null;
+  confidence: Confidence | null;
+  recommended_action: string | null;
+  created_at: string | null;
 }
 
 // Dashboard types
@@ -130,6 +169,7 @@ export interface DashboardSummary {
   recent_investigations: Array<{
     id: string;
     question: string;
+    connection_id: string;
     status: string;
     verdict: Verdict | null;
     conclusion: string | null;

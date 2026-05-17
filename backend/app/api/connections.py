@@ -61,6 +61,22 @@ def _probe_read_only(dsn: str) -> None:
             pass
 
 
+@router.get("/connections")
+async def list_connections(user=Depends(require_auth)):
+    from app.appwrite.store import get_connections_for_workspace
+    conns = await get_connections_for_workspace(workspace_id=user["workspace_id"])
+    return {
+        "connections": [
+            {
+                "id": c["$id"],
+                "label": c.get("label", ""),
+                "kind": c.get("kind", ""),
+            }
+            for c in conns
+        ]
+    }
+
+
 @router.post("/connections")
 async def register_connection(body: RegisterConnectionRequest, user=Depends(require_auth)):
     workspace_id = user["workspace_id"]
@@ -116,17 +132,17 @@ async def get_schema(connection_id: str, user=Depends(require_auth)):
 
 @router.get("/connections/{connection_id}/quality")
 async def get_quality(connection_id: str, user=Depends(require_auth)):
-    conn = await get_connection(connection_id, workspace_id=user["workspace_id"])
-    if not conn:
-        raise HTTPException(404, "Connection not found")
-
-    kind = conn.get("kind", "demo")
-    schema_name = "main" if kind == "demo" else "src"
-
-    if kind == "postgres":
-        session = DuckDBSession(mode="live", dsn=conn["dsn"])
-    else:
+    # "demo" is a reserved shortcut — always serves the local demo.duckdb scan
+    if connection_id == "demo":
         session = DuckDBSession(mode="demo")
+        schema_name = "main"
+    else:
+        conn = await get_connection(connection_id, workspace_id=user["workspace_id"])
+        if not conn:
+            raise HTTPException(404, "Connection not found")
+        kind = conn.get("kind", "demo")
+        schema_name = "main" if kind == "demo" else "src"
+        session = DuckDBSession(mode="live", dsn=conn["dsn"]) if kind == "postgres" else DuckDBSession(mode="demo")
 
     try:
         result = await anyio.to_thread.run_sync(

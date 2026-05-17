@@ -1,16 +1,20 @@
 import { NavLink } from "react-router-dom";
-import { Activity, BarChart3, DatabaseZap, LayoutDashboard, Search } from "lucide-react";
+import { Activity, BarChart3, Database, DatabaseZap, LayoutDashboard, LogOut, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppwrite } from "@/hooks/useAppwrite";
 
 const links = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/investigate", label: "Investigate", icon: Search },
+  { to: "/connections", label: "Connections", icon: Database },
   { to: "/quality/demo", label: "Data Quality", icon: BarChart3 },
   { to: "/signals", label: "Signals", icon: Activity },
   { to: "/semantic", label: "Semantic Dictionary", icon: DatabaseZap },
 ];
 
 export function Sidebar() {
+  const { logout } = useAppwrite();
+
   return (
     <aside className="flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950/95 backdrop-blur">
       <div className="flex items-center gap-2.5 p-5">
@@ -37,7 +41,14 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-gray-800 px-4 py-4">
+      <div className="border-t border-gray-800 px-4 py-4 space-y-2">
+        <button
+          onClick={logout}
+          className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-900 hover:text-gray-300"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </button>
         <div className="rounded-md border border-gray-800 bg-gray-900/70 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
           live mesh connected
         </div>

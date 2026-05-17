@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     gemini_extra_api_keys: str = ""  # comma-separated extra keys: key2,key3
     gemini_model: str = "gemma-4-31b-it"
 
-    appwrite_endpoint: str = "https://cloud.appwrite.io/v1"
+    appwrite_endpoint: str = "https://sfo.cloud.appwrite.io/v1"
     appwrite_project_id: str = ""
     appwrite_api_key: str = ""
     appwrite_db_id: str = ""

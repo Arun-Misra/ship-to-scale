@@ -1,9 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Mail, User, ShieldAlert } from "lucide-react";
+import { useAppwrite } from "@/hooks/useAppwrite";
 
 export default function AuthPage(): JSX.Element {
+  const { login, signup, session } = useAppwrite();
   const navigate = useNavigate();
+
+  // Redirect after session is set — runs after re-render so route tree is ready
+  useEffect(() => {
+    if (session) navigate("/dashboard", { replace: true });
+  }, [session, navigate]);
 
   // Responsive VH fix for mobile browsers
   useEffect(() => {
@@ -43,12 +50,9 @@ export default function AuthPage(): JSX.Element {
     }
   }, [isSignUp]);
 
-  const seededEmail = "demo@datapilot.ai";
-  const seededPassword = "demo1234";
-
   const validateEmail = (e: string) => /\S+@\S+\.\S+/.test(e);
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError(null);
 
@@ -66,24 +70,18 @@ export default function AuthPage(): JSX.Element {
     }
 
     setLoading(true);
-    setError(null);
-
-    // Simulated backend flow
-    window.setTimeout(() => {
-      setLoading(false);
-
-      if (!isSignUp) {
-        // Login flow: accept seeded demo credentials or exact match
-        if (email === seededEmail && password === seededPassword) {
-          navigate("/investigate");
-        } else {
-          setError("Invalid credentials — try the seeded demo credentials below.");
-        }
+    try {
+      if (isSignUp) {
+        await signup(email, password, fullName || undefined);
       } else {
-        // Sign up: accept any valid payload and route to workspace
-        navigate("/investigate");
+        await login(email, password);
       }
-    }, 1200);
+      // navigate is handled by the useEffect watching session
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Authentication failed.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -169,7 +167,7 @@ export default function AuthPage(): JSX.Element {
             {!isSignUp && (
               <div className="bg-[#020202] border border-white/[0.04] p-3 rounded font-mono text-[11px] text-zinc-500 space-y-1 mt-2">
                 <div className="text-xs text-zinc-400">Seeded Demo Node</div>
-                <div className="break-all">{`Email: ${seededEmail} // Password: ${seededPassword}`}</div>
+                <div className="break-all">Use your Appwrite account credentials to sign in.</div>
               </div>
             )}
 
