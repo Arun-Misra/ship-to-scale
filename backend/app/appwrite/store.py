@@ -235,6 +235,50 @@ async def get_slack_installation(slack_team_id: str) -> dict | None:
         return None
 
 
+async def get_slack_installation_for_workspace(workspace_id: str) -> dict | None:
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.list_documents(
+            database_id=DB,
+            collection_id=C.appwrite_collection_slack_installations,
+            queries=[Query.equal("appwrite_workspace_id", workspace_id)],
+        )))
+        docs = result.documents
+        return _to_dict(docs[0]) if docs else None
+    except Exception:
+        return None
+
+
+async def upsert_slack_installation(
+    slack_team_id: str,
+    slack_team_name: str,
+    slack_bot_token: str,
+    appwrite_workspace_id: str,
+    default_connection_id: str = "",
+) -> None:
+    existing = await get_slack_installation(slack_team_id)
+    if existing:
+        doc_id = existing["$id"]
+        await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.update_document(
+            database_id=DB,
+            collection_id=C.appwrite_collection_slack_installations,
+            document_id=doc_id,
+            data={
+                "slack_team_name": slack_team_name,
+                "slack_bot_token": slack_bot_token,
+                "appwrite_workspace_id": appwrite_workspace_id,
+                "default_connection_id": default_connection_id,
+            },
+        )))
+    else:
+        await create_slack_installation(
+            slack_team_id=slack_team_id,
+            slack_team_name=slack_team_name,
+            slack_bot_token=slack_bot_token,
+            appwrite_workspace_id=appwrite_workspace_id,
+            default_connection_id=default_connection_id,
+        )
+
+
 async def create_slack_installation(
     slack_team_id: str,
     slack_team_name: str,

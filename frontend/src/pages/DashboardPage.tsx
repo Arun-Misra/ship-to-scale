@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Database, MessageSquare, Plus, Terminal } from "lucide-react";
+import { BarChart3, Database, MessageSquare, Plus, Terminal, Bot, CheckCircle2, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppwrite } from "@/hooks/useAppwrite";
-import { getDashboard } from "@/api/client";
+import { getDashboard, getSlackStatus, activateSlack } from "@/api/client";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ErrorBanner } from "@/components/shared/ErrorBanner";
 import type { DashboardSummary } from "@/types";
@@ -13,13 +13,34 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [slackStatus, setSlackStatus] = useState<{ configured: boolean; activated: boolean; team: string } | null>(null);
+  const [slackActivating, setSlackActivating] = useState(false);
+  const [slackError, setSlackError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!session) return;
     getDashboard(session.jwt)
       .then(setSummary)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load dashboard."))
       .finally(() => setLoading(false));
+    getSlackStatus(session.jwt)
+      .then(setSlackStatus)
+      .catch(() => {});
   }, [session]);
+
+  const handleSlackActivate = async () => {
+    if (!session) return;
+    setSlackActivating(true);
+    setSlackError(null);
+    try {
+      const res = await activateSlack(session.jwt);
+      setSlackStatus({ configured: true, activated: true, team: res.team });
+    } catch (err) {
+      setSlackError(err instanceof Error ? err.message : "Activation failed.");
+    } finally {
+      setSlackActivating(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -51,7 +72,7 @@ export default function DashboardPage() {
       {error && <ErrorBanner message={error} />}
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mb-8">
         <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm transition-colors hover:border-white/[0.12] hover:bg-white/[0.05]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -96,6 +117,47 @@ export default function DashboardPage() {
               "Stored in Appwrite"
             )}
           </div>
+        </div>
+
+        {/* Slack card */}
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm transition-colors hover:border-white/[0.12] hover:bg-white/[0.05]">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm text-zinc-500">Slack Bot</div>
+              <div className="mt-2 flex items-center gap-2">
+                {slackStatus?.activated ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                    <span className="font-medium text-zinc-100 text-sm">{slackStatus.team || "Active"}</span>
+                  </>
+                ) : (
+                  <span className="font-mono text-lg tracking-tight text-zinc-500">—</span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-md border border-white/[0.07] bg-black/30 p-2 text-zinc-500">
+              <Bot className="h-4 w-4" />
+            </div>
+          </div>
+          {slackError && (
+            <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/[0.07] px-3 py-2 text-xs text-red-400">
+              {slackError}
+            </div>
+          )}
+          {slackStatus?.activated ? (
+            <div className="text-sm text-zinc-600">
+              Mention the bot in any channel to query your data
+            </div>
+          ) : (
+            <button
+              onClick={handleSlackActivate}
+              disabled={slackActivating || !slackStatus?.configured}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white shadow-[0_0_16px_rgba(14,165,233,0.25)] transition-all hover:bg-sky-400 disabled:opacity-50 disabled:shadow-none"
+            >
+              {slackActivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
+              {slackActivating ? "Activating…" : slackStatus?.configured ? "Activate Bot" : "Token not configured"}
+            </button>
+          )}
         </div>
       </div>
 

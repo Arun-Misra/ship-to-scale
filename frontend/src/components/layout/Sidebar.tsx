@@ -37,13 +37,9 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!session) return;
-    const load = () =>
-      listChats(session.jwt)
-        .then((r) => setConversations(r.conversations))
-        .catch(() => {});
-    load();
-    const id = setInterval(load, 8000);
-    return () => clearInterval(id);
+    listChats(session.jwt)
+      .then((r) => setConversations(r.conversations))
+      .catch(() => {});
   }, [session]);
 
   const handleNewChat = () => {

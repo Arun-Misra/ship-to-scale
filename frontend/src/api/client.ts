@@ -132,6 +132,14 @@ export async function getSlackInstallUrl(jwt: string, workspaceId: string) {
   return apiFetch<{ url: string }>(`/slack/install-url?workspace_id=${workspaceId}`, jwt);
 }
 
+export async function getSlackStatus(jwt: string): Promise<{ configured: boolean; activated: boolean; team: string }> {
+  return apiFetch("/slack/status", jwt);
+}
+
+export async function activateSlack(jwt: string): Promise<{ status: string; team: string; team_id: string }> {
+  return apiFetch("/slack/activate", jwt, { method: "POST" });
+}
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export async function startChat(
