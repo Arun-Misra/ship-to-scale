@@ -8,31 +8,32 @@ CRITICAL rules:
 - Check bot_id / subtype=bot_message BEFORE anything else (prevents infinite self-loop)
 - Extract channel + thread_ts SYNCHRONOUSLY before returning 200 (request gone in background task)
 """
+
 import json
 import logging
 import re
-from time import time
 import secrets
+from time import time
 
-from fastapi import APIRouter, Request, BackgroundTasks, Depends
-
-logger = logging.getLogger(__name__)
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from app.appwrite.auth import require_auth
-import httpx
 from app.appwrite.store import (
+    create_slack_installation,
+    get_connections_for_workspace,
     get_slack_installation,
     get_slack_installation_for_workspace,
-    create_slack_installation,
     upsert_slack_installation,
 )
-from app.slack.signature import verify_slack_signature
-from app.slack.handler import handle_slack_event
-from app.slack.oauth import pending_installs, exchange_slack_code
 from app.config import settings
+from app.slack.handler import handle_slack_event
+from app.slack.oauth import exchange_slack_code, pending_installs
+from app.slack.signature import verify_slack_signature
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _seen_event_ids: set[str] = set()
 
@@ -46,73 +47,78 @@ def _is_duplicate(event_id: str) -> bool:
 
 @router.post("/slack/events")
 async def slack_events(request: Request, background_tasks: BackgroundTasks):
-    raw_body = await request.body()
-    logger.info("SLACK RAW HEADERS: %s", dict(request.headers))
-    logger.info("SLACK RAW BODY: %s", raw_body.decode("utf-8", errors="replace"))
-
     try:
-        payload = json.loads(raw_body)
-    except Exception:
-        logger.error("SLACK body is not valid JSON")
+        raw_body = await request.body()  # raw bytes FIRST
+        verify_slack_signature(raw_body, dict(request.headers))  # verify on raw bytes
+        payload = json.loads(raw_body)  # parse ONLY after verification
+
+        if payload.get("type") == "url_verification":
+            return {"challenge": payload["challenge"]}
+
+        event = payload.get("event", {})
+
+        # Bot self-loop prevention — must be first check
+        if event.get("bot_id") or event.get("subtype") == "bot_message":
+            return {"status": "ok"}
+
+        event_type = event.get("type")
+        if event_type not in {"app_mention", "message"}:
+            return {"status": "ok"}
+
+        team_id = payload.get("team_id")
+        installation = await get_slack_installation(team_id)
+        if not installation:
+            return {"status": "ok"}
+
+        event_id = payload.get("event_id", "")
+        if _is_duplicate(event_id):
+            return {"status": "ok"}
+
+        # Extract synchronously before returning 200 — request object is gone in background task
+        channel = event.get("channel")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+        question = re.sub(r"<@[A-Z0-9]+>", "", event.get("text", "")).strip()
+
+        workspace_id = installation.get("appwrite_workspace_id", "")
+        connection_id = installation.get("default_connection_id", "")
+
+        # Ensure Slack replies execute against a real connection for the installed workspace.
+        if workspace_id and not connection_id:
+            conns = await get_connections_for_workspace(workspace_id=workspace_id)
+            if conns:
+                # Prefer any connection that has an explicit DSN, or one whose kind suggests Postgres.
+                preferred = None
+                for c in conns:
+                    if c.get("dsn"):
+                        preferred = c
+                        break
+                if not preferred:
+                    for c in conns:
+                        if str(c.get("kind", "")).lower().startswith("post"):
+                            preferred = c
+                            break
+                if not preferred:
+                    preferred = conns[0]
+                connection_id = preferred.get("$id", "")
+                logger.info("Slack: selected connection %s for workspace %s", connection_id, workspace_id)
+
+        if not channel or not question:
+            return {"status": "ok"}
+
+        background_tasks.add_task(
+            handle_slack_event,
+            question=question,
+            channel=channel,
+            thread_ts=thread_ts,
+            workspace_id=workspace_id,
+            connection_id=connection_id,
+            bot_token=installation.get("slack_bot_token", ""),
+        )
         return {"status": "ok"}
-
-    logger.info("SLACK PARSED PAYLOAD: %s", json.dumps(payload))
-
-    # Always handle url_verification (Slack sends this when you first configure the endpoint)
-    if payload.get("type") == "url_verification":
-        logger.info("SLACK url_verification challenge: %s", payload.get("challenge"))
-        return {"challenge": payload["challenge"]}
-
-    event = payload.get("event", {})
-    logger.info(
-        "SLACK EVENT: type=%s subtype=%s bot_id=%s text=%r channel=%s",
-        event.get("type"), event.get("subtype"), event.get("bot_id"),
-        event.get("text", "")[:120], event.get("channel"),
-    )
-
-    # Bot self-loop prevention
-    if event.get("bot_id") or event.get("subtype") == "bot_message":
-        logger.info("SLACK ignoring bot message")
+    except Exception as e:
+        # Never bubble a 5xx to Slack/webhook gateway; acknowledge and log.
+        logger.error("Slack events webhook failed: %s", e, exc_info=True)
         return {"status": "ok"}
-
-    if event.get("type") not in ("app_mention", "message"):
-        logger.info("SLACK ignoring event type: %s", event.get("type"))
-        return {"status": "ok"}
-
-    team_id = payload.get("team_id")
-    installation = await get_slack_installation(team_id)
-    logger.info("SLACK installation lookup team_id=%s found=%s", team_id, installation is not None)
-    if not installation:
-        return {"status": "ok"}
-
-    event_id = payload.get("event_id", "")
-    if _is_duplicate(event_id):
-        logger.info("SLACK duplicate event_id=%s, skipping", event_id)
-        return {"status": "ok"}
-
-    channel = event.get("channel")
-    thread_ts = event.get("thread_ts") or event.get("ts")
-    question = re.sub(r"<@[A-Z0-9]+>", "", event.get("text", "")).strip()
-
-    if not question:
-        logger.info("SLACK empty question after stripping mentions")
-        return {"status": "ok"}
-
-    logger.info(
-        "SLACK dispatching: event_id=%s channel=%s thread_ts=%s question=%r",
-        event_id, channel, thread_ts, question,
-    )
-
-    background_tasks.add_task(
-        handle_slack_event,
-        question=question,
-        channel=channel,
-        thread_ts=thread_ts,
-        workspace_id=installation["appwrite_workspace_id"],
-        connection_id=installation["default_connection_id"],
-        bot_token=installation["slack_bot_token"],
-    )
-    return {"status": "ok"}
 
 
 @router.get("/slack/status")
@@ -132,6 +138,7 @@ async def activate_slack(user=Depends(require_auth)):
     """Register the configured bot token for this workspace (no full OAuth needed)."""
     if not settings.slack_bot_token:
         from fastapi import HTTPException
+
         raise HTTPException(400, "SLACK_BOT_TOKEN is not configured in the environment")
 
     async with httpx.AsyncClient(timeout=10) as client:
@@ -142,6 +149,7 @@ async def activate_slack(user=Depends(require_auth)):
     data = resp.json()
     if not data.get("ok"):
         from fastapi import HTTPException
+
         raise HTTPException(400, f"Slack token rejected: {data.get('error', 'unknown')}")
 
     team_id = data["team_id"]
@@ -176,13 +184,19 @@ async def slack_oauth_callback(code: str, state: str):
     entry = pending_installs.pop(state, None)
     if not entry or time() > entry["expires"]:
         from fastapi import HTTPException
+
         raise HTTPException(403, "Invalid or expired state")
 
     team_id, bot_token, team_name = await exchange_slack_code(code)
+    workspace_id = entry["workspace_id"]
+    workspace_connections = await get_connections_for_workspace(workspace_id=workspace_id)
+    default_connection_id = workspace_connections[0]["$id"] if workspace_connections else ""
+
     await create_slack_installation(
         slack_team_id=team_id,
         slack_team_name=team_name,
         slack_bot_token=bot_token,
-        appwrite_workspace_id=entry["workspace_id"],
+        appwrite_workspace_id=workspace_id,
+        default_connection_id=default_connection_id,
     )
     return RedirectResponse(f"{settings.frontend_url}/dashboard?slack=connected")
