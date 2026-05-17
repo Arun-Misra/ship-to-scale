@@ -106,17 +106,49 @@ DuckDB date notes (critical — the created_at column is VARCHAR with mixed form
 
 
 async def stream_reasoning(prompt: str) -> AsyncIterator[str]:
-    """Stream free-text reasoning tokens. These are display-only — never parsed for control flow."""
-    for chunk in _get_client().models.generate_content_stream(
-        model=settings.gemini_model,
-        contents=prompt,
-    ):
-        if chunk.text:
-            yield chunk.text
+    """Reasoning tokens — display-only, never parsed for control flow.
+    Uses generate_content (not streaming) to avoid MALFORMED_RESPONSE issues with Gemma models.
+    Failures are swallowed silently."""
+    try:
+        response = _get_client().models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+        )
+        text = _response_text(response)
+        if text:
+            yield text
+    except Exception:
+        yield "> Analyzing..."
 
 
 _SQL_QUERY_KEYS = {"type", "sql", "intent"}
 _CONCLUDE_KEYS = {"type", "verdict", "root_cause", "confidence", "recommended_action", "chart"}
+
+
+def _normalize_action(raw: dict) -> dict:
+    """Normalize common model field-name variations so the Pydantic discriminator finds 'type'."""
+    raw = dict(raw)
+    # Fix missing/renamed type field
+    if "type" not in raw:
+        for alt in ("action", "action_type", "kind"):
+            if alt in raw:
+                raw["type"] = raw.pop(alt)
+                break
+    # Normalize type values
+    type_map = {
+        "sql": "sql_query", "query": "sql_query", "SQL": "sql_query",
+        "sql-query": "sql_query", "sqlquery": "sql_query",
+        "CONCLUDE": "conclude", "finish": "conclude", "done": "conclude", "end": "conclude",
+    }
+    if raw.get("type") in type_map:
+        raw["type"] = type_map[raw["type"]]
+    # Fix sql field name variations for sql_query actions
+    if raw.get("type") == "sql_query" and "sql" not in raw:
+        for alt in ("query", "SQL", "statement", "sql_statement"):
+            if alt in raw:
+                raw["sql"] = raw.pop(alt)
+                break
+    return raw
 
 
 def _strip_action(raw: dict) -> dict:
@@ -132,18 +164,65 @@ def _strip_action(raw: dict) -> dict:
     return raw
 
 
+def _response_text(response) -> str:
+    """Extract text from a Gemini response, handling MALFORMED_RESPONSE finish reason."""
+    try:
+        text = response.text
+        if text:
+            return text
+    except Exception:
+        pass
+    # Fallback: pull text directly from candidates
+    try:
+        for candidate in response.candidates or []:
+            for part in (candidate.content.parts or []):
+                if hasattr(part, "text") and part.text:
+                    return part.text
+    except Exception:
+        pass
+    raise ValueError("Empty or malformed response from model")
+
+
 def generate_action(prompt: str) -> Action:
     """
-    Generate a structured Action. Uses response_mime_type=application/json as primary.
-    Falls back to extract_json() strip before validation.
+    Generate a structured Action.
+    Tries each API key in the pool once. For each key, attempts structured output first
+    (Gemini models) then falls back to plain generation (Gemma models).
+    Raises the last exception only after all keys are exhausted.
     """
-    response = _get_client().models.generate_content(
-        model=settings.gemini_model,
-        contents=prompt,
-        config=GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_ACTION_SCHEMA,
-        ),
-    )
-    raw = json.loads(extract_json(response.text))
-    return _action_adapter.validate_python(_strip_action(raw))
+    # Ensure pool is initialized; _get_client() handles first-time setup.
+    _get_client()
+    last_error: Exception = RuntimeError("No Gemini clients available")
+
+    for client in _clients:
+        try:
+            text = ""
+            # Structured output (works on Gemini, returns 500 on Gemma — caught below)
+            try:
+                response = client.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=prompt,
+                    config=GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=_ACTION_SCHEMA,
+                    ),
+                )
+                text = _response_text(response)
+            except Exception:
+                pass
+
+            # Plain generation fallback (required for Gemma models)
+            if not text:
+                response = client.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=prompt,
+                )
+                text = _response_text(response)
+
+            raw = json.loads(extract_json(text))
+            return _action_adapter.validate_python(_strip_action(_normalize_action(raw)))
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise last_error

@@ -7,6 +7,7 @@ import InvestigationPage from "@/pages/InvestigationPage";
 import QualityPage from "@/pages/QualityPage";
 import SignalsPage from "@/pages/SignalsPage";
 import SemanticPage from "@/pages/SemanticPage";
+import ConnectionsPage from "@/pages/ConnectionsPage";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -28,15 +29,16 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <HomePage />} />
         {session ? (
           <>
             <Route path="/dashboard" element={<AppShell><DashboardPage /></AppShell>} />
             <Route path="/investigate" element={<AppShell><InvestigationPage /></AppShell>} />
+            <Route path="/connections" element={<AppShell><ConnectionsPage /></AppShell>} />
             <Route path="/quality/:connectionId" element={<AppShell><QualityPage /></AppShell>} />
             <Route path="/signals" element={<AppShell><SignalsPage /></AppShell>} />
             <Route path="/semantic" element={<AppShell><SemanticPage /></AppShell>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </>
         ) : (
           <Route path="*" element={<AuthPage />} />

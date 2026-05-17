@@ -7,6 +7,7 @@ One shared retry budget per step (ValidationError + EXPLAIN failures share the s
 Hard step budget → graceful partial answer (never a crash, never a confident wrong answer).
 """
 import asyncio
+import dataclasses
 import json
 from typing import AsyncIterator
 
@@ -20,8 +21,35 @@ from app.agent.sse import sse_struct, sse_reasoning, sse_keepalive
 from app.agent.executor import explain_sql, execute_sql
 from app.agent.planner import build_system_prompt, stream_reasoning, generate_action
 from app.db.session import DuckDBSession
-from app.appwrite.store import list_semantic_definitions, get_connection
+from app.appwrite.store import list_semantic_definitions, get_connection, update_investigation_result
+from app.db.schema_crawler import crawl_schema
 from app.config import settings
+from app.state import investigations as _investigations
+
+
+async def _persist_result(
+    investigation_id: str,
+    verdict: str,
+    root_cause: str,
+    confidence: str,
+    recommended_action: str,
+) -> None:
+    """Save final result to both in-memory state and Appwrite."""
+    if investigation_id in _investigations:
+        _investigations[investigation_id].update({
+            "status": "completed",
+            "verdict": verdict,
+            "root_cause": root_cause,
+            "confidence": confidence,
+            "recommended_action": recommended_action,
+        })
+    await update_investigation_result(
+        investigation_id=investigation_id,
+        verdict=verdict,
+        root_cause=root_cause,
+        confidence=confidence,
+        recommended_action=recommended_action,
+    )
 
 
 async def run_investigation(
@@ -37,17 +65,28 @@ async def run_investigation(
     semantic_defs = await list_semantic_definitions(workspace_id)
 
     conn_doc = await get_connection(connection_id, workspace_id)
-    if conn_doc and conn_doc.get("kind") == "postgres":
-        session = DuckDBSession(mode="live", dsn=conn_doc["dsn"])
-    else:
-        session = DuckDBSession(mode="demo")
 
+    session: DuckDBSession | None = None
     try:
-        raw_schema = conn_doc.get("schema", "{}") if conn_doc else "{}"
-        try:
-            schema_graph = json.loads(raw_schema)
-        except Exception:
-            schema_graph = {}
+        if conn_doc and conn_doc.get("kind") == "postgres":
+            session = DuckDBSession(mode="live", dsn=conn_doc["dsn"])
+        else:
+            session = DuckDBSession(mode="demo")
+
+        if conn_doc:
+            raw_schema = conn_doc.get("schema", "{}")
+            try:
+                schema_graph = json.loads(raw_schema)
+            except Exception:
+                schema_graph = {}
+        else:
+            # Demo connection — crawl schema live from demo.duckdb
+            try:
+                schema_graph = dataclasses.asdict(
+                    await asyncio.to_thread(crawl_schema, session.con, "main")
+                )
+            except Exception:
+                schema_graph = {}
         system_prompt = build_system_prompt(schema_graph, semantic_defs)
         observations: list[Observation] = []
         step_budget = settings.agent_step_budget
@@ -110,19 +149,21 @@ async def run_investigation(
                 yield sse_struct("action", action)
                 yield sse_struct("step_end", StepEndEvent(step=step))
                 data = last_sql_result[1] if last_sql_result else []
-                yield sse_struct(
-                    "final",
-                    FinalEvent(
-                        investigation_id=investigation_id,
-                        verdict=action.verdict,
-                        root_cause=action.root_cause,
-                        confidence=action.confidence,
-                        recommended_action=action.recommended_action,
-                        chart=action.chart,
-                        data=data,
-                        definition_receipts=_build_receipts(semantic_defs),
-                    ),
+                final_event = FinalEvent(
+                    investigation_id=investigation_id,
+                    verdict=action.verdict,
+                    root_cause=action.root_cause,
+                    confidence=action.confidence,
+                    recommended_action=action.recommended_action,
+                    chart=action.chart,
+                    data=data,
+                    definition_receipts=_build_receipts(semantic_defs),
                 )
+                yield sse_struct("final", final_event)
+                asyncio.create_task(_persist_result(
+                    investigation_id, action.verdict, action.root_cause,
+                    action.confidence, action.recommended_action,
+                ))
                 return
 
             # sql_query action — EXPLAIN pre-flight
@@ -163,11 +204,16 @@ async def run_investigation(
                 definition_receipts=_build_receipts(semantic_defs),
             ),
         )
+        asyncio.create_task(_persist_result(
+            investigation_id, "inconclusive",
+            "Step budget exhausted.", "low", "Try a more specific question.",
+        ))
 
     except Exception as e:
         yield sse_struct("error", ErrorEvent(code="agent_error", message=str(e)))
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def _build_reasoning_prompt(system: str, question: str, observations: list) -> str:
@@ -179,8 +225,12 @@ def _build_action_prompt(system: str, question: str, observations: list) -> str:
     obs_text = "\n".join(f"Step {o.step}: {o.status} — {o.error or o.preview}" for o in observations)
     return (
         f"{system}\n\nQuestion: {question}\n\nObservations so far:\n{obs_text}\n\n"
-        "Emit your next action as a JSON object matching the Action schema. "
-        "Do NOT wrap in markdown. Do NOT include any reasoning text."
+        "Output exactly ONE raw JSON object. No markdown fences. No explanation text before or after.\n"
+        "Use EXACTLY one of these two formats:\n"
+        '  {"type": "sql_query", "sql": "<DuckDB SELECT statement>", "intent": "<one-line description>"}\n'
+        '  {"type": "conclude", "verdict": "confirmed|refuted|inconclusive", '
+        '"root_cause": "<explanation>", "confidence": "low|medium|high", "recommended_action": "<action>"}\n'
+        'The "type" field is required. Use "sql_query" to run another query, "conclude" when you have enough evidence.'
     )
 
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, CheckCircle2, Database, Terminal } from "lucide-react";
+import { ArrowUpRight, BarChart3, CheckCircle2, Database, Plus, Terminal } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppwrite } from "@/hooks/useAppwrite";
 import { getDashboard } from "@/api/client";
@@ -30,7 +30,9 @@ export default function DashboardPage() {
   if (loading) return <LoadingSpinner />;
 
   const connectedSources = summary?.connected_sources ?? 0;
+  const connections = summary?.connections ?? [];
   const recentInvestigations = summary?.recent_investigations ?? [];
+  const confirmedCount = recentInvestigations.filter((i) => i.verdict === "confirmed").length;
 
   return (
     <div className="h-full overflow-y-auto bg-gray-950 px-8 py-8 text-gray-100">
@@ -55,7 +57,8 @@ export default function DashboardPage() {
 
       {error && <ErrorBanner message={error} />}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      {/* Stats cards */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mb-8">
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -69,14 +72,16 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="text-sm text-gray-500">
-            {connectedSources === 0 ? "Connect a database to start" : "Read-only, schema crawled"}
+            {connectedSources === 0 ? (
+              <Link to="/connections" className="text-sky-400 hover:text-sky-300">Connect a database →</Link>
+            ) : "Read-only, schema crawled"}
           </div>
         </div>
 
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-gray-400">Investigations Run</div>
+              <div className="text-sm text-gray-400">Investigations</div>
               <div className="mt-2 font-mono text-3xl tracking-tight text-gray-100">
                 {recentInvestigations.length}
               </div>
@@ -85,15 +90,19 @@ export default function DashboardPage() {
               <Terminal className="h-4 w-4" />
             </div>
           </div>
-          <div className="text-sm text-gray-500">This session</div>
+          <div className="text-sm text-gray-500">
+            {recentInvestigations.length === 0 ? (
+              <Link to="/investigate" className="text-sky-400 hover:text-sky-300">Start an investigation →</Link>
+            ) : "Stored in workspace"}
+          </div>
         </div>
 
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-sm text-gray-400">Confirmed Anomalies</div>
-              <div className="mt-2 font-mono text-3xl tracking-tight text-amber-500">
-                {recentInvestigations.filter((i) => i.verdict === "confirmed").length}
+              <div className={`mt-2 font-mono text-3xl tracking-tight ${confirmedCount > 0 ? "text-amber-500" : "text-gray-100"}`}>
+                {confirmedCount}
               </div>
             </div>
             <div className="rounded-md border border-gray-800 bg-gray-950 p-2 text-gray-500">
@@ -104,7 +113,52 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <section className="mt-8">
+      {/* Connections section */}
+      {connections.length > 0 && (
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h2 className="text-lg font-medium text-gray-100">Data Sources</h2>
+            <Link to="/connections" className="text-xs text-sky-400 hover:text-sky-300 transition-colors">
+              Manage →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {connections.map((conn) => (
+              <div
+                key={conn.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900 px-4 py-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="rounded-md border border-gray-800 bg-gray-950 p-1.5">
+                    <Database className="h-3.5 w-3.5 text-gray-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-100">{conn.label}</div>
+                    <div className="font-mono text-xs text-gray-500">{conn.kind}</div>
+                  </div>
+                </div>
+                <Link
+                  to={`/quality/${conn.id}`}
+                  className="shrink-0 rounded-md border border-gray-700 p-1.5 text-gray-400 transition-colors hover:border-sky-500/40 hover:text-sky-400"
+                  title="Quality report"
+                >
+                  <BarChart3 className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            ))}
+            <Link
+              to="/connections"
+              className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-900/40 px-4 py-3 text-sm text-gray-500 transition-colors hover:border-sky-500/30 hover:text-sky-400"
+            >
+              <Plus className="h-4 w-4" />
+              Add connection
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Recent investigations */}
+      <section>
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="text-lg font-medium text-gray-100">Recent Investigations</h2>
           <Link to="/investigate" className="text-xs text-sky-400 hover:text-sky-300 transition-colors">
@@ -122,22 +176,22 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
-            <div className="grid grid-cols-[1.5fr_160px_1.8fr_44px] border-b border-gray-800 px-4 py-3 text-xs uppercase tracking-wide text-gray-500">
+            <div className="grid grid-cols-[1.5fr_140px_1.6fr_44px] border-b border-gray-800 px-4 py-3 text-xs uppercase tracking-wide text-gray-500">
               <div>Query</div>
               <div>Verdict</div>
-              <div>Conclusion</div>
+              <div>Root Cause</div>
               <div />
             </div>
             <div className="divide-y divide-gray-800">
               {recentInvestigations.map((inv) => (
-                <div key={inv.id} className="grid grid-cols-[1.5fr_160px_1.8fr_44px] items-center px-4 py-4 transition-colors hover:bg-gray-950/60">
-                  <div className="text-sm text-gray-100 pr-4">{inv.question}</div>
+                <div key={inv.id} className="grid grid-cols-[1.5fr_140px_1.6fr_44px] items-center px-4 py-4 transition-colors hover:bg-gray-950/60">
+                  <div className="text-sm text-gray-100 pr-4 truncate">{inv.question}</div>
                   <div>
                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${verdictClasses(inv.verdict)}`}>
                       {inv.verdict ?? inv.status}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-400 pr-4">{inv.conclusion ?? "—"}</div>
+                  <div className="text-sm text-gray-400 pr-4 truncate">{inv.conclusion ?? "—"}</div>
                   <div className="flex justify-end">
                     <Link
                       to="/investigate"
