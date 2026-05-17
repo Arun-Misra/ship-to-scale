@@ -51,6 +51,10 @@ export async function registerConnection(
   });
 }
 
+export async function deleteConnection(jwt: string, connectionId: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/connections/${connectionId}`, jwt, { method: "DELETE" });
+}
+
 export async function getSchema(jwt: string, connectionId: string) {
   return apiFetch(`/connections/${connectionId}/schema`, jwt);
 }

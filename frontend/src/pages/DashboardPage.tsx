@@ -28,22 +28,22 @@ export default function DashboardPage() {
   const recentConversations = summary?.recent_conversations ?? [];
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-950 px-8 py-8 text-gray-100">
+    <div className="h-full overflow-y-auto px-8 py-8">
       <div className="mb-8 flex items-start justify-between gap-6">
         <div>
-          <div className="text-2xl font-semibold tracking-tight">Workspace Overview</div>
-          <div className="mt-2 text-sm text-gray-500">
+          <div className="text-2xl font-semibold tracking-tight text-zinc-100">Workspace Overview</div>
+          <div className="mt-2 text-sm text-zinc-500">
             {connectedSources > 0
               ? `${connectedSources} data source${connectedSources !== 1 ? "s" : ""} connected`
               : "No data sources connected yet"}
           </div>
-          <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400 font-mono">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-zinc-400 font-mono">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)] animate-pulse" />
             <span>Live</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-xs text-gray-400 font-mono">
-          <Terminal className="h-4 w-4 text-gray-500" />
+        <div className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs text-zinc-500 font-mono backdrop-blur-sm">
+          <Terminal className="h-4 w-4 text-zinc-600" />
           Read-only workspace
         </div>
       </div>
@@ -52,41 +52,49 @@ export default function DashboardPage() {
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-8">
-        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm transition-colors hover:border-white/[0.12] hover:bg-white/[0.05]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-gray-400">Connected Sources</div>
-              <div className="mt-2 font-mono text-3xl tracking-tight text-gray-100">
+              <div className="text-sm text-zinc-500">Connected Sources</div>
+              <div className="mt-2 font-mono text-3xl tracking-tight text-zinc-100">
                 {connectedSources}
               </div>
             </div>
-            <div className="rounded-md border border-gray-800 bg-gray-950 p-2 text-gray-500">
+            <div className="rounded-md border border-white/[0.07] bg-black/30 p-2 text-zinc-500">
               <Database className="h-4 w-4" />
             </div>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-zinc-600">
             {connectedSources === 0 ? (
-              <Link to="/connections" className="text-sky-400 hover:text-sky-300">Connect a database →</Link>
-            ) : "Read-only, schema crawled"}
+              <Link to="/connections" className="text-sky-400 hover:text-sky-300">
+                Connect a database →
+              </Link>
+            ) : (
+              "Read-only, schema crawled"
+            )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 backdrop-blur-sm transition-colors hover:border-white/[0.12] hover:bg-white/[0.05]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-gray-400">Conversations</div>
-              <div className="mt-2 font-mono text-3xl tracking-tight text-gray-100">
+              <div className="text-sm text-zinc-500">Conversations</div>
+              <div className="mt-2 font-mono text-3xl tracking-tight text-zinc-100">
                 {recentConversations.length}
               </div>
             </div>
-            <div className="rounded-md border border-gray-800 bg-gray-950 p-2 text-gray-500">
+            <div className="rounded-md border border-white/[0.07] bg-black/30 p-2 text-zinc-500">
               <MessageSquare className="h-4 w-4" />
             </div>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-zinc-600">
             {recentConversations.length === 0 ? (
-              <Link to="/chat" className="text-sky-400 hover:text-sky-300">Start your first chat →</Link>
-            ) : "Stored in Appwrite"}
+              <Link to="/chat" className="text-sky-400 hover:text-sky-300">
+                Start your first chat →
+              </Link>
+            ) : (
+              "Stored in Appwrite"
+            )}
           </div>
         </div>
       </div>
@@ -95,7 +103,7 @@ export default function DashboardPage() {
       {connections.length > 0 && (
         <section className="mb-8">
           <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="text-lg font-medium text-gray-100">Data Sources</h2>
+            <h2 className="text-lg font-medium text-zinc-100">Data Sources</h2>
             <Link to="/connections" className="text-xs text-sky-400 hover:text-sky-300 transition-colors">
               Manage →
             </Link>
@@ -104,20 +112,20 @@ export default function DashboardPage() {
             {connections.map((conn) => (
               <div
                 key={conn.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900 px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 backdrop-blur-sm transition-colors hover:border-white/[0.12]"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="rounded-md border border-gray-800 bg-gray-950 p-1.5">
-                    <Database className="h-3.5 w-3.5 text-gray-400" />
+                  <div className="rounded-md border border-white/[0.07] bg-black/30 p-1.5">
+                    <Database className="h-3.5 w-3.5 text-zinc-400" />
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-gray-100">{conn.label}</div>
-                    <div className="font-mono text-xs text-gray-500">{conn.kind}</div>
+                    <div className="truncate text-sm font-medium text-zinc-100">{conn.label}</div>
+                    <div className="font-mono text-xs text-zinc-600">{conn.kind}</div>
                   </div>
                 </div>
                 <Link
                   to={`/data-quality/${conn.id}`}
-                  className="shrink-0 rounded-md border border-gray-700 p-1.5 text-gray-400 transition-colors hover:border-sky-500/40 hover:text-sky-400"
+                  className="shrink-0 rounded-md border border-white/[0.08] p-1.5 text-zinc-500 transition-colors hover:border-sky-500/40 hover:text-sky-400"
                   title="Quality report"
                 >
                   <BarChart3 className="h-3.5 w-3.5" />
@@ -126,7 +134,7 @@ export default function DashboardPage() {
             ))}
             <Link
               to="/connections"
-              className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-900/40 px-4 py-3 text-sm text-gray-500 transition-colors hover:border-sky-500/30 hover:text-sky-400"
+              className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-zinc-600 transition-colors hover:border-sky-500/30 hover:text-sky-400"
             >
               <Plus className="h-4 w-4" />
               Add connection
@@ -135,17 +143,17 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Recent Conversations — same data as sidebar */}
+      {/* Recent Conversations */}
       <section>
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-medium text-gray-100">Recent Conversations</h2>
+          <h2 className="text-lg font-medium text-zinc-100">Recent Conversations</h2>
           <Link to="/chat" className="text-xs text-sky-400 hover:text-sky-300 transition-colors">
             New chat →
           </Link>
         </div>
 
         {recentConversations.length === 0 ? (
-          <div className="rounded-lg border border-gray-800 bg-gray-900 p-8 text-center text-gray-500 text-sm">
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-8 text-center text-zinc-600 text-sm backdrop-blur-sm">
             No conversations yet.{" "}
             <Link to="/chat" className="text-sky-400 hover:text-sky-300">
               Ask your first question
@@ -153,26 +161,26 @@ export default function DashboardPage() {
             to get started.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
-            <div className="grid grid-cols-[1fr_80px_44px] border-b border-gray-800 px-4 py-3 text-xs uppercase tracking-wide text-gray-500">
+          <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.03] backdrop-blur-sm">
+            <div className="grid grid-cols-[1fr_80px_44px] border-b border-white/[0.06] px-4 py-3 text-xs uppercase tracking-wide text-zinc-600">
               <div>Conversation</div>
               <div>Messages</div>
               <div />
             </div>
-            <div className="divide-y divide-gray-800">
+            <div className="divide-y divide-white/[0.05]">
               {recentConversations.map((conv) => (
                 <Link
                   key={conv.id}
                   to={`/chat?c=${conv.id}`}
-                  className="grid grid-cols-[1fr_80px_44px] items-center px-4 py-4 transition-colors hover:bg-gray-950/60"
+                  className="grid grid-cols-[1fr_80px_44px] items-center px-4 py-4 transition-colors hover:bg-white/[0.03]"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <MessageSquare className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                    <span className="text-sm text-gray-100 truncate">{conv.title}</span>
+                    <MessageSquare className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+                    <span className="text-sm text-zinc-100 truncate">{conv.title}</span>
                   </div>
-                  <div className="font-mono text-xs text-gray-500">{conv.message_count}</div>
+                  <div className="font-mono text-xs text-zinc-600">{conv.message_count}</div>
                   <div className="flex justify-end">
-                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-800 text-gray-500 hover:text-gray-100 hover:border-gray-700">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.07] text-zinc-600 hover:text-zinc-100 hover:border-white/[0.14]">
                       →
                     </span>
                   </div>

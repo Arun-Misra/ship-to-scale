@@ -2,6 +2,7 @@
 import asyncio
 import json
 import re
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -67,9 +68,11 @@ async def send_chat_message(body: ChatMessageRequest, user=Depends(require_auth)
             "workspace_id": workspace_id,
             "connection_id": body.connection_id,
             "messages": [],
+            "last_used_at": time.time(),
         }
 
     conv = _conversations[conv_id]
+    conv["last_used_at"] = time.time()  # update on every message so recency is tracked
 
     # Append user message
     msg_id = str(uuid.uuid4())
@@ -172,32 +175,48 @@ async def stream_chat(conversation_id: str, investigation_id: str, user=Depends(
 async def list_conversations(user=Depends(require_auth)):
     workspace_id = user["workspace_id"]
 
-    # In-memory (current session)
-    mem = {
+    # In-memory (current session) — keyed by conv_id, includes float last_used_at
+    mem: dict[str, dict] = {
         conv_id: {
             "id": conv_id,
             "title": _title(conv),
             "message_count": len(conv["messages"]),
             "connection_id": conv["connection_id"],
+            "last_used_at": conv.get("last_used_at", 0.0),
         }
         for conv_id, conv in _conversations.items()
         if conv["workspace_id"] == workspace_id
     }
 
-    # Merge with Appwrite (catches conversations from previous server sessions)
+    # Merge with Appwrite — fills in convs from previous server sessions
+    # Appwrite returns sorted by $updatedAt desc so the most-recently-updated appear first
     persisted = await _store_list_convs(workspace_id)
     for p in persisted:
         pid = p["$id"]
         if pid not in mem:
             user_msgs = [m for m in p.get("messages", []) if m.get("role") == "user"]
+            # Parse $updatedAt ISO string to float for unified sorting
+            try:
+                from datetime import datetime, timezone
+                updated = datetime.fromisoformat(
+                    p.get("$updatedAt", "").replace("Z", "+00:00")
+                ).timestamp()
+            except Exception:
+                updated = 0.0
             mem[pid] = {
                 "id": pid,
                 "title": user_msgs[0]["content"][:48] if user_msgs else p.get("title", "Conversation"),
                 "message_count": len(p.get("messages", [])),
                 "connection_id": p.get("connection_id", ""),
+                "last_used_at": updated,
             }
 
-    return {"conversations": list(reversed(list(mem.values())))}
+    # Sort by most-recently-used first
+    sorted_convs = sorted(mem.values(), key=lambda c: c["last_used_at"], reverse=True)
+    # Strip internal sort key before returning
+    for c in sorted_convs:
+        c.pop("last_used_at", None)
+    return {"conversations": sorted_convs}
 
 
 @router.get("/chat/{conversation_id}")
@@ -218,11 +237,19 @@ async def get_conversation(conversation_id: str, user=Depends(require_auth)):
     if not persisted:
         raise HTTPException(404, "Conversation not found")
 
-    # Warm in-memory cache
+    # Warm in-memory cache — preserve $updatedAt so viewing doesn't change sort order
+    try:
+        from datetime import datetime
+        _last_used = datetime.fromisoformat(
+            persisted.get("$updatedAt", "").replace("Z", "+00:00")
+        ).timestamp()
+    except Exception:
+        _last_used = 0.0
     _conversations[conversation_id] = {
         "workspace_id": workspace_id,
         "connection_id": persisted["connection_id"],
         "messages": persisted.get("messages", []),
+        "last_used_at": _last_used,
     }
     return {
         "conversation_id": conversation_id,

@@ -1,6 +1,7 @@
 """
 Dashboard summary: connected sources, recent conversations (same source as sidebar).
 """
+from datetime import datetime
 from fastapi import APIRouter, Depends
 
 from app.appwrite.auth import require_auth
@@ -20,30 +21,39 @@ async def get_dashboard(user=Depends(require_auth)):
     workspace_id = user["workspace_id"]
     summary = await get_dashboard_summary(workspace_id=workspace_id)
 
-    # ── Recent conversations — identical merge logic to GET /chat ──────────
-    # In-memory first (current session)
+    # ── Recent conversations — same merge + sort logic as GET /chat ──────────
     mem: dict[str, dict] = {
         cid: {
             "id": cid,
             "title": _conv_title(c),
             "message_count": len(c["messages"]),
             "connection_id": c["connection_id"],
+            "last_used_at": c.get("last_used_at", 0.0),
         }
         for cid, c in _conversations.items()
         if c["workspace_id"] == workspace_id
     }
 
-    # Merge Appwrite (persisted across server restarts)
     for p in await _store_list_convs(workspace_id):
         pid = p["$id"]
         if pid not in mem:
             user_msgs = [m for m in p.get("messages", []) if m.get("role") == "user"]
+            try:
+                updated = datetime.fromisoformat(
+                    p.get("$updatedAt", "").replace("Z", "+00:00")
+                ).timestamp()
+            except Exception:
+                updated = 0.0
             mem[pid] = {
                 "id": pid,
                 "title": user_msgs[0]["content"][:48] if user_msgs else p.get("title", "Conversation"),
                 "message_count": len(p.get("messages", [])),
                 "connection_id": p.get("connection_id", ""),
+                "last_used_at": updated,
             }
 
-    summary["recent_conversations"] = list(reversed(list(mem.values())))[:10]
+    sorted_convs = sorted(mem.values(), key=lambda c: c["last_used_at"], reverse=True)
+    for c in sorted_convs:
+        c.pop("last_used_at", None)
+    summary["recent_conversations"] = sorted_convs[:10]
     return summary

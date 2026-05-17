@@ -19,6 +19,10 @@ router = APIRouter()
 _signal_cache: dict[str, list[dict]] = {}
 
 
+def evict_connection_cache(connection_id: str) -> None:
+    _signal_cache.pop(connection_id, None)
+
+
 def _compute_signals(con, schema_name: str) -> list[dict]:
     signals = []
     ts = datetime.now(timezone.utc).isoformat()

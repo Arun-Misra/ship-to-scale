@@ -35,7 +35,6 @@ export function Sidebar() {
 
   const [conversations, setConversations] = useState<ConvItem[]>([]);
 
-  // Poll chat list so history stays in sync as new conversations are created
   useEffect(() => {
     if (!session) return;
     const load = () =>
@@ -52,7 +51,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-full w-64 flex-col bg-gray-950 border-r border-gray-800 select-none">
+    <aside
+      className="relative z-20 flex h-full w-64 flex-col border-r border-white/[0.06] select-none"
+      style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(3,3,3,0.85)" }}
+    >
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 pt-5 pb-3">
         <img
@@ -70,9 +72,9 @@ export function Sidebar() {
       <div className="px-3 pb-2">
         <button
           onClick={handleNewChat}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-gray-300 transition-colors hover:bg-gray-800/80 hover:text-white"
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-100"
         >
-          <MessageSquarePlus className="h-4 w-4 shrink-0 text-gray-400" />
+          <MessageSquarePlus className="h-4 w-4 shrink-0 text-zinc-500" />
           New chat
         </button>
       </div>
@@ -81,7 +83,7 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto px-3 pb-2">
         {conversations.length > 0 && (
           <>
-            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+            <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-zinc-700">
               Recents
             </div>
             <div className="space-y-0.5">
@@ -92,8 +94,8 @@ export function Sidebar() {
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                     activeConvId === conv.id
-                      ? "bg-gray-800 text-gray-100"
-                      : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
+                      ? "bg-white/[0.06] text-zinc-100"
+                      : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                   )}
                 >
                   <span className="flex-1 truncate">{conv.title}</span>
@@ -104,9 +106,9 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Other pages */}
-      <div className="border-t border-gray-800/70 px-3 pt-2 pb-1">
-        <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+      {/* Nav links */}
+      <div className="border-t border-white/[0.05] px-3 pt-2 pb-1">
+        <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-zinc-700">
           Tools
         </div>
         <nav className="space-y-0.5">
@@ -116,10 +118,10 @@ export function Sidebar() {
               to={l.to}
               className={({ isActive }) =>
                 cn(
-                  "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800/60 hover:text-gray-200",
+                  "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-gray-800 text-sky-400"
-                    : "text-gray-400"
+                    ? "bg-white/[0.06] text-sky-400"
+                    : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                 )
               }
             >
@@ -131,10 +133,10 @@ export function Sidebar() {
       </div>
 
       {/* Sign out */}
-      <div className="border-t border-gray-800/70 px-3 py-3">
+      <div className="border-t border-white/[0.05] px-3 py-3">
         <button
           onClick={logout}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-white/[0.03] hover:text-zinc-400"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           Sign out

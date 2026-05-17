@@ -8,8 +8,8 @@ import type { Signal, Connection } from "@/types";
 const REFRESH_MS = 15 * 60 * 1000;
 
 function priorityFrameClass(priority: Signal["priority"]) {
-  if (priority === "critical") return "border-amber-500/30";
-  return "border-gray-800";
+  if (priority === "critical") return "border-amber-500/25";
+  return "border-white/[0.07]";
 }
 
 function priorityIconColor(priority: Signal["priority"]) {
@@ -32,7 +32,6 @@ export default function SignalsPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Load connections, redirect to first if no connectionId
   useEffect(() => {
     if (!session) return;
     getConnections(session.jwt)
@@ -66,7 +65,6 @@ export default function SignalsPage() {
     [session, connectionId]
   );
 
-  // Fetch on mount / connectionId change + auto-refresh every 15 min
   useEffect(() => {
     if (!connectionId) return;
     setSignals([]);
@@ -75,18 +73,17 @@ export default function SignalsPage() {
     return () => clearInterval(id);
   }, [fetchSignals, connectionId]);
 
-  // No connectionId and connections loaded but list is empty
   if (!connectionId && !connsLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-gray-950 px-8 text-center">
-        <Database className="mb-4 h-12 w-12 text-gray-700" />
-        <h2 className="mb-2 text-lg font-medium text-gray-200">No databases connected</h2>
-        <p className="mb-6 text-sm text-gray-500">
+      <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+        <Database className="mb-4 h-12 w-12 text-zinc-700" />
+        <h2 className="mb-2 text-lg font-medium text-zinc-200">No databases connected</h2>
+        <p className="mb-6 text-sm text-zinc-500">
           Connect a database to start monitoring signals.
         </p>
         <Link
           to="/connections"
-          className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-5 py-2.5 text-sm text-sky-400 transition-colors hover:bg-sky-500/20"
+          className="rounded-xl border border-sky-500/30 bg-sky-500/[0.07] px-5 py-2.5 text-sm text-sky-400 transition-colors hover:bg-sky-500/[0.12] hover:border-sky-500/50"
         >
           Connect a database →
         </Link>
@@ -94,11 +91,10 @@ export default function SignalsPage() {
     );
   }
 
-  // Waiting for redirect
   if (!connectionId) {
     return (
-      <div className="flex h-full items-center justify-center bg-gray-950">
-        <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-zinc-600" />
       </div>
     );
   }
@@ -109,12 +105,12 @@ export default function SignalsPage() {
     : null;
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-950 px-8 py-8 text-gray-100">
+    <div className="h-full overflow-y-auto px-8 py-8">
       {/* Header */}
       <div className="mb-8 flex items-start justify-between gap-6">
-        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 flex-1">
-          <div className="mb-3 text-lg font-medium text-gray-100">Signals Engine</div>
-          <p className="max-w-4xl text-sm leading-6 text-gray-400">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 flex-1 backdrop-blur-sm">
+          <div className="mb-3 text-lg font-medium text-zinc-100">Signals Engine</div>
+          <p className="max-w-4xl text-sm leading-6 text-zinc-500">
             Background statistical monitoring executes cheap checks against your isolated DuckDB snapshot.
             Fully decoupled from your production database to protect operational capacity.
           </p>
@@ -127,14 +123,17 @@ export default function SignalsPage() {
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen((v) => !v)}
-                  className="flex items-center gap-2 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-gray-100"
+                  className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.06] backdrop-blur-sm"
                 >
-                  <Database className="h-3.5 w-3.5 text-gray-400" />
+                  <Database className="h-3.5 w-3.5 text-zinc-500" />
                   <span>{activeConn?.label ?? connectionId}</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+                  <ChevronDown className="h-3.5 w-3.5 text-zinc-600" />
                 </button>
                 {dropdownOpen && (
-                  <div className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-gray-700 bg-gray-900 shadow-xl">
+                  <div
+                    className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-xl border border-white/[0.10] shadow-2xl"
+                    style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(5,5,5,0.95)" }}
+                  >
                     {connections.map((c) => (
                       <button
                         key={c.id}
@@ -142,14 +141,14 @@ export default function SignalsPage() {
                           setDropdownOpen(false);
                           navigate(`/signals/${c.id}`);
                         }}
-                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-800 ${
-                          c.id === connectionId ? "text-sky-400" : "text-gray-300"
+                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/[0.05] ${
+                          c.id === connectionId ? "text-sky-400" : "text-zinc-300"
                         }`}
                       >
-                        <Database className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                        <Database className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                         <div className="min-w-0">
                           <div className="truncate">{c.label}</div>
-                          <div className="font-mono text-[10px] text-gray-500">{c.kind}</div>
+                          <div className="font-mono text-[10px] text-zinc-600">{c.kind}</div>
                         </div>
                       </button>
                     ))}
@@ -163,7 +162,7 @@ export default function SignalsPage() {
               onClick={() => fetchSignals(true)}
               disabled={refreshing}
               title="Refresh now"
-              className="flex items-center gap-2 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-200 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-white/[0.14] hover:text-zinc-200 disabled:opacity-50 backdrop-blur-sm"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
               {refreshing ? "Refreshing…" : "Refresh"}
@@ -171,29 +170,29 @@ export default function SignalsPage() {
           </div>
 
           {refreshedAt && (
-            <div className="text-right text-[11px] text-gray-600">
+            <div className="text-right text-[11px] text-zinc-600 font-mono">
               <div>Last refreshed: {refreshedAt} IST</div>
-              <div className="text-[10px] text-gray-700">Auto-refreshes every 15 min</div>
+              <div className="text-[10px] text-zinc-700">Auto-refreshes every 15 min</div>
             </div>
           )}
         </div>
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
           <Loader2 className="h-4 w-4 animate-spin" />
           Computing signals…
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-400">
           {error}
         </div>
       )}
 
       {!loading && !error && signals.length === 0 && (
-        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-500">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 text-sm text-zinc-500 backdrop-blur-sm">
           No signals detected. All metrics are within normal variance.
         </div>
       )}
@@ -202,27 +201,27 @@ export default function SignalsPage() {
         {signals.map((signal) => (
           <div
             key={signal.id}
-            className={`relative overflow-hidden rounded-lg border bg-gray-900 p-6 ${priorityFrameClass(signal.priority)}`}
+            className={`relative overflow-hidden rounded-xl border bg-white/[0.03] p-6 backdrop-blur-sm ${priorityFrameClass(signal.priority)}`}
           >
             {signal.priority === "critical" && (
               <div className="absolute left-0 top-0 h-full w-1 bg-amber-500" />
             )}
             <div className="flex items-start justify-between gap-6">
               <div className="max-w-5xl">
-                <div className="mb-3 flex items-center gap-2 text-sm text-gray-100">
+                <div className="mb-3 flex items-center gap-2 text-sm text-zinc-100">
                   <AlertCircle className={`h-4 w-4 ${priorityIconColor(signal.priority)}`} />
                   <span>{signal.title}</span>
                 </div>
-                <p className="text-sm leading-6 text-gray-400">{signal.details}</p>
+                <p className="text-sm leading-6 text-zinc-500">{signal.details}</p>
               </div>
 
-              <div className="shrink-0 rounded-md border border-gray-800 bg-gray-950/70 px-3 py-1.5 text-xs font-mono text-gray-500">
+              <div className="shrink-0 rounded-md border border-white/[0.07] bg-black/30 px-3 py-1.5 text-xs font-mono text-zinc-500">
                 {signal.priority}
               </div>
             </div>
 
             {signal.investigation && (
-              <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-gray-800 pt-4">
+              <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-4">
                 <button
                   onClick={() => {
                     const prompt =
@@ -235,12 +234,12 @@ export default function SignalsPage() {
                     if (connectionId) params.set("conn", connectionId);
                     navigate(`/chat?${params.toString()}`);
                   }}
-                  className="inline-flex items-center gap-2 rounded-md border border-gray-800 bg-gray-950 px-4 py-2 text-sm text-gray-100 transition-colors hover:border-amber-500/40 hover:bg-gray-900"
+                  className="inline-flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-2 text-sm text-zinc-100 transition-colors hover:border-amber-500/40 hover:bg-amber-500/[0.08]"
                 >
                   <Play className="h-4 w-4 text-amber-500" />
                   Trigger Deep Agent Root-Cause Investigation
                 </button>
-                <span className="text-xs font-mono text-gray-500">
+                <span className="text-xs font-mono text-zinc-600">
                   Direct handoff to the investigation surface
                 </span>
               </div>
@@ -249,7 +248,7 @@ export default function SignalsPage() {
         ))}
       </div>
 
-      <div className="mt-8 rounded-lg border border-gray-800 bg-gray-900 p-5 text-xs leading-6 text-gray-500">
+      <div className="mt-8 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 text-xs leading-6 text-zinc-600">
         Monitoring feed remains intentionally decoupled from the production database path. Alert generation favors low-cost statistical checks and presents only material changes requiring human review.
       </div>
     </div>

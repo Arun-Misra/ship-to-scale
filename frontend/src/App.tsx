@@ -10,18 +10,70 @@ import SemanticPage from "@/pages/SemanticPage";
 import ConnectionsPage from "@/pages/ConnectionsPage";
 import { Sidebar } from "@/components/layout/Sidebar";
 
+function AppBackground() {
+  return (
+    <>
+      {/* Dot grid */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }}
+      />
+      {/* Edge fade */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% 0%, transparent 40%, #030303 100%)",
+        }}
+      />
+      {/* Sky-blue orb */}
+      <div
+        className="pointer-events-none fixed z-0"
+        style={{
+          top: "-15%",
+          left: "35%",
+          width: "700px",
+          height: "700px",
+          background:
+            "radial-gradient(circle, rgba(14,165,233,0.07) 0%, rgba(99,102,241,0.03) 40%, transparent 65%)",
+          borderRadius: "50%",
+          filter: "blur(80px)",
+        }}
+      />
+      {/* Violet orb */}
+      <div
+        className="pointer-events-none fixed z-0"
+        style={{
+          bottom: "5%",
+          right: "-5%",
+          width: "450px",
+          height: "450px",
+          background: "radial-gradient(circle, rgba(139,92,246,0.05) 0%, transparent 65%)",
+          borderRadius: "50%",
+          filter: "blur(70px)",
+        }}
+      />
+    </>
+  );
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100">
+    <div
+      className="relative flex h-screen overflow-hidden text-zinc-100"
+      style={{ backgroundColor: "#030303" }}
+    >
+      <AppBackground />
       <Sidebar />
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="relative z-10 flex flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">{children}</div>
       </main>
     </div>
   );
 }
 
-// Redirects unauthenticated users to /login
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAppwrite();
   if (loading) return null;
@@ -29,7 +81,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }
 
-// Redirects authenticated users away from public pages (login)
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAppwrite();
   if (loading) return null;
@@ -42,7 +93,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-400">
+      <div
+        className="flex h-screen items-center justify-center text-zinc-500"
+        style={{ backgroundColor: "#030303" }}
+      >
         Loading...
       </div>
     );

@@ -5,10 +5,10 @@ import { getSemanticDefs, createSemanticDef, deleteSemanticDef } from "@/api/cli
 import type { SemanticDef } from "@/types";
 
 function originClass(source: string) {
-  if (source === "harvested") return "border-gray-700 text-gray-300 bg-gray-900";
-  if (source === "jit_capture") return "border-sky-500/30 text-sky-400 bg-sky-500/5";
-  if (source === "manual") return "border-emerald-500/30 text-emerald-400 bg-emerald-500/5";
-  return "border-gray-700 text-gray-400 bg-gray-900";
+  if (source === "harvested") return "border-white/[0.08] text-zinc-400 bg-white/[0.03]";
+  if (source === "jit_capture") return "border-sky-500/30 text-sky-400 bg-sky-500/[0.05]";
+  if (source === "manual") return "border-emerald-500/30 text-emerald-400 bg-emerald-500/[0.05]";
+  return "border-white/[0.07] text-zinc-500 bg-white/[0.02]";
 }
 
 export default function SemanticPage() {
@@ -78,22 +78,22 @@ export default function SemanticPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-950 px-8 py-8 text-gray-100">
-      <div className="mb-8 border-b border-gray-800 pb-6">
+    <div className="h-full overflow-y-auto px-8 py-8">
+      <div className="mb-8 border-b border-white/[0.06] pb-6">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-xl font-medium text-gray-100">Semantic Knowledge Base</div>
-            <div className="mt-1 text-xs uppercase tracking-[0.28em] text-gray-500">
+            <div className="text-xl font-medium text-zinc-100">Semantic Knowledge Base</div>
+            <div className="mt-1 text-xs font-mono uppercase tracking-[0.28em] text-zinc-600">
               definition graph / query compiler
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-gray-500">
+            <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.28em] text-zinc-600 backdrop-blur-sm">
               {loading ? "…" : `${defs.length} terms`}
             </div>
             <button
               onClick={() => setShowForm((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-400"
+              className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-3 py-2 text-sm font-medium text-white shadow-[0_0_20px_rgba(14,165,233,0.3)] transition-all hover:bg-sky-400 hover:shadow-[0_0_28px_rgba(14,165,233,0.45)]"
             >
               {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {showForm ? "Cancel" : "Add Definition"}
@@ -105,26 +105,27 @@ export default function SemanticPage() {
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="mb-6 rounded-xl border border-sky-500/20 bg-gray-900 p-6 space-y-4"
+          className="mb-6 rounded-2xl border border-sky-500/20 bg-sky-500/[0.03] p-6 space-y-4 backdrop-blur-sm"
+          style={{ boxShadow: "0 0 40px rgba(14,165,233,0.05)" }}
         >
-          <div className="text-sm font-medium text-gray-200">Add a new semantic definition</div>
+          <div className="text-sm font-medium text-zinc-200">Add a new semantic definition</div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Term *</label>
+              <label className="block text-xs font-mono uppercase tracking-widest text-sky-500/50 mb-1.5">Term *</label>
               <input
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
                 placeholder="monthly_recurring_revenue"
-                className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono text-gray-100 placeholder-gray-600 focus:border-sky-500 focus:outline-none"
+                className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-sm font-mono text-zinc-100 placeholder-zinc-700 focus:border-sky-500/40 focus:bg-sky-500/[0.04] focus:outline-none transition-colors"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Materiality</label>
+              <label className="block text-xs font-mono uppercase tracking-widest text-sky-500/50 mb-1.5">Materiality</label>
               <select
                 value={materiality}
                 onChange={(e) => setMateriailty(e.target.value)}
-                className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 focus:border-sky-500 focus:outline-none"
+                className="w-full rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 focus:border-sky-500/40 focus:outline-none transition-colors"
               >
                 <option value="material">material</option>
                 <option value="informational">informational</option>
@@ -133,28 +134,28 @@ export default function SemanticPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Natural language description *</label>
+            <label className="block text-xs font-mono uppercase tracking-widest text-sky-500/50 mb-1.5">Natural language description *</label>
             <input
               value={naturalLanguage}
               onChange={(e) => setNaturalLanguage(e.target.value)}
               placeholder="Total recurring revenue from active subscriptions in a given month"
-              className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:border-sky-500 focus:outline-none"
+              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-700 focus:border-sky-500/40 focus:bg-sky-500/[0.04] focus:outline-none transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">SQL definition *</label>
+            <label className="block text-xs font-mono uppercase tracking-widest text-sky-500/50 mb-1.5">SQL definition *</label>
             <textarea
               value={definitionSql}
               onChange={(e) => setDefinitionSql(e.target.value)}
               placeholder="SELECT SUM(order_total) FROM orders WHERE status = 'active'"
               rows={3}
-              className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono text-gray-100 placeholder-gray-600 focus:border-sky-500 focus:outline-none resize-none"
+              className="w-full rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-sm font-mono text-zinc-100 placeholder-zinc-700 focus:border-sky-500/40 focus:bg-sky-500/[0.04] focus:outline-none transition-colors resize-none"
             />
           </div>
 
           {formError && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-400">
+            <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2.5 text-sm text-red-400">
               {formError}
             </div>
           )}
@@ -162,7 +163,7 @@ export default function SemanticPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-sky-500 py-2.5 text-sm font-medium text-white transition-colors hover:bg-sky-400 disabled:opacity-50"
+            className="w-full rounded-xl bg-sky-500 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_rgba(14,165,233,0.3)] transition-all hover:bg-sky-400 hover:shadow-[0_0_28px_rgba(14,165,233,0.45)] disabled:opacity-50 disabled:shadow-none"
           >
             {submitting ? "Saving..." : "Save Definition"}
           </button>
@@ -170,20 +171,20 @@ export default function SemanticPage() {
       )}
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
+        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-400">
           {error}
         </div>
       )}
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading semantic definitions...
         </div>
       )}
 
       {!loading && !error && defs.length === 0 && (
-        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-500">
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-6 text-sm text-zinc-500 backdrop-blur-sm">
           No semantic definitions yet.{" "}
           <button onClick={() => setShowForm(true)} className="text-sky-400 hover:text-sky-300">
             Add one manually
@@ -193,11 +194,11 @@ export default function SemanticPage() {
       )}
 
       {defs.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-gray-800 bg-gray-900">
+        <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.03] backdrop-blur-sm">
           {defs.map((def) => (
             <div
               key={def.$id}
-              className="border-b border-gray-800 p-4 transition-colors last:border-b-0 hover:bg-gray-900/80"
+              className="border-b border-white/[0.05] p-4 transition-colors last:border-b-0 hover:bg-white/[0.03]"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -205,11 +206,11 @@ export default function SemanticPage() {
                     {def.term}
                   </div>
                   {def.natural_language && (
-                    <div className="mt-1 text-sm text-gray-400">{def.natural_language}</div>
+                    <div className="mt-1 text-sm text-zinc-500">{def.natural_language}</div>
                   )}
-                  <div className="mt-2 font-mono text-sm text-gray-300">{def.definition_sql}</div>
+                  <div className="mt-2 font-mono text-sm text-zinc-300">{def.definition_sql}</div>
                 </div>
-                <div className="flex flex-col items-end gap-2 text-xs text-gray-500">
+                <div className="flex flex-col items-end gap-2 text-xs text-zinc-600">
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex rounded-full border px-2.5 py-1 font-mono transition-colors ${originClass(def.source)}`}>
                       {def.source}
@@ -217,7 +218,7 @@ export default function SemanticPage() {
                     <button
                       onClick={() => handleDelete(def.$id)}
                       disabled={deletingId === def.$id}
-                      className="rounded-md border border-gray-700 p-1.5 text-gray-500 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+                      className="rounded-md border border-white/[0.07] p-1.5 text-zinc-600 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
                       title="Delete definition"
                     >
                       {deletingId === def.$id ? (

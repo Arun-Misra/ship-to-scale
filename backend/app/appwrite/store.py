@@ -76,6 +76,78 @@ async def get_connection(connection_id: str, workspace_id: str) -> dict | None:
         return None
 
 
+async def delete_connection(connection_id: str, workspace_id: str) -> bool:
+    """Delete a connection if it belongs to the given workspace. Returns True on success."""
+    try:
+        doc = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.get_document(
+            database_id=DB,
+            collection_id=C.appwrite_collection_connections,
+            document_id=connection_id,
+        )))
+        if _to_dict(doc).get("workspace_id") != workspace_id:
+            return False
+        await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.delete_document(
+            database_id=DB,
+            collection_id=C.appwrite_collection_connections,
+            document_id=connection_id,
+        )))
+        return True
+    except Exception:
+        return False
+
+
+async def delete_conversations_for_connection(connection_id: str, workspace_id: str) -> None:
+    """Best-effort delete all Appwrite conversations linked to this connection."""
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.list_documents(
+            database_id=DB,
+            collection_id="chat_conversations",
+            queries=[
+                Query.equal("workspace_id", workspace_id),
+                Query.equal("connection_id", connection_id),
+                Query.limit(100),
+            ],
+        )))
+        for doc in result.documents:
+            try:
+                doc_id = doc.id
+                await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.delete_document(
+                    database_id=DB,
+                    collection_id="chat_conversations",
+                    document_id=doc_id,
+                )))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+async def delete_investigations_for_connection(connection_id: str, workspace_id: str) -> None:
+    """Best-effort delete all Appwrite investigation records for this connection."""
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.list_documents(
+            database_id=DB,
+            collection_id=C.appwrite_collection_investigations,
+            queries=[
+                Query.equal("workspace_id", workspace_id),
+                Query.equal("connection_id", connection_id),
+                Query.limit(100),
+            ],
+        )))
+        for doc in result.documents:
+            try:
+                doc_id = doc.id
+                await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.delete_document(
+                    database_id=DB,
+                    collection_id=C.appwrite_collection_investigations,
+                    document_id=doc_id,
+                )))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 # ── Semantic definitions ──────────────────────────────────────────────────────
 
 async def list_semantic_definitions(workspace_id: str) -> list[dict]:
@@ -317,7 +389,7 @@ async def list_conversations(workspace_id: str) -> list[dict]:
         result = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.list_documents(
             database_id=DB,
             collection_id="chat_conversations",
-            queries=[Query.equal("workspace_id", workspace_id), Query.limit(50), Query.order_desc("$createdAt")],
+            queries=[Query.equal("workspace_id", workspace_id), Query.limit(50), Query.order_desc("$updatedAt")],
         )))
         out = []
         for d in result.documents:

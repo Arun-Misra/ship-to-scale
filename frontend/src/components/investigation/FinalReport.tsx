@@ -7,9 +7,9 @@ interface Props {
 }
 
 const verdictStyles: Record<string, string> = {
-  confirmed: "bg-red-950 border-red-800 text-red-300",
-  refuted: "bg-green-950 border-green-800 text-green-300",
-  inconclusive: "bg-gray-800 border-gray-700 text-gray-300",
+  confirmed: "bg-red-500/[0.08] border-red-500/30 text-red-300",
+  refuted: "bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-300",
+  inconclusive: "bg-white/[0.03] border-white/[0.08] text-zinc-300",
 };
 
 export function FinalReport({ result }: Props) {
@@ -34,7 +34,7 @@ export function FinalReport({ result }: Props) {
 
       {result.definition_receipts.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Definitions used</p>
+          <p className="text-xs font-mono text-zinc-600 uppercase tracking-widest">Definitions used</p>
           {result.definition_receipts.map((r) => (
             <DefinitionReceipt key={r.term} receipt={r} />
           ))}

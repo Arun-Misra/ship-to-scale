@@ -19,21 +19,20 @@ function AiMessageBubble({ msg }: { msg: ChatMessage }) {
   const isClarification = msg.is_clarification || msg.status === "needs_clarification";
 
   const bubbleBorder = isClarification
-    ? "border-amber-600/50 bg-amber-950/30"
-    : "border-gray-700 bg-gray-900";
+    ? "border-amber-500/30 bg-amber-500/[0.05]"
+    : "border-white/[0.08] bg-white/[0.03]";
 
   return (
     <div className="flex flex-col gap-2 max-w-[80%]">
-      <div className={`rounded-2xl rounded-tl-sm border px-4 py-3 text-sm ${bubbleBorder}`}>
+      <div className={`rounded-2xl rounded-tl-sm border px-4 py-3 text-sm backdrop-blur-sm ${bubbleBorder}`}>
         {/* Streaming indicator */}
         {isStreaming && !msg.content && (
-          <div className="flex items-center gap-1.5 text-gray-400">
+          <div className="flex items-center gap-1.5 text-zinc-500">
             <span className="animate-bounce delay-0 w-1.5 h-1.5 bg-sky-400 rounded-full inline-block" />
             <span className="animate-bounce delay-75 w-1.5 h-1.5 bg-sky-400 rounded-full inline-block" />
             <span className="animate-bounce delay-150 w-1.5 h-1.5 bg-sky-400 rounded-full inline-block" />
-            {/* Show latest reasoning while streaming */}
             {stepCount > 0 && msg.steps && msg.steps[msg.steps.length - 1].reasoning && (
-              <span className="ml-2 font-mono text-xs text-gray-500 truncate max-w-xs">
+              <span className="ml-2 font-mono text-xs text-zinc-600 truncate max-w-xs">
                 {msg.steps[msg.steps.length - 1].reasoning.slice(0, 80)}
                 {msg.steps[msg.steps.length - 1].reasoning.length > 80 ? "…" : ""}
               </span>
@@ -43,7 +42,7 @@ function AiMessageBubble({ msg }: { msg: ChatMessage }) {
 
         {/* Main content */}
         {msg.content && (
-          <p className={`leading-relaxed ${isClarification ? "text-amber-200" : "text-gray-100"}`}>
+          <p className={`leading-relaxed ${isClarification ? "text-amber-200" : "text-zinc-100"}`}>
             {isClarification && (
               <HelpCircle className="inline-block w-4 h-4 mr-1.5 text-amber-400 shrink-0 align-text-bottom" />
             )}
@@ -57,7 +56,7 @@ function AiMessageBubble({ msg }: { msg: ChatMessage }) {
         <div className="pl-1">
           <button
             onClick={() => setStepsOpen((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
           >
             <ChevronRight
               className={`w-3.5 h-3.5 transition-transform ${stepsOpen ? "rotate-90" : ""}`}
@@ -66,7 +65,7 @@ function AiMessageBubble({ msg }: { msg: ChatMessage }) {
           </button>
 
           {stepsOpen && (
-            <div className="mt-2 space-y-2 border-l-2 border-gray-700 pl-4">
+            <div className="mt-2 space-y-2 border-l-2 border-white/[0.07] pl-4">
               {msg.steps!.map((step) => (
                 <StepCard key={step.step} step={step} />
               ))}
@@ -88,7 +87,7 @@ function AiMessageBubble({ msg }: { msg: ChatMessage }) {
 function UserMessageBubble({ msg }: { msg: ChatMessage }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-gray-700 px-4 py-3 text-sm text-gray-100">
+      <div className="max-w-[75%] rounded-2xl rounded-tr-sm border border-white/[0.10] bg-white/[0.08] px-4 py-3 text-sm text-zinc-100">
         {msg.content}
       </div>
     </div>
@@ -137,7 +136,7 @@ export default function InvestigationPage() {
   useEffect(() => {
     const convId = searchParams.get("c");
     if (!convId || !session) return;
-    if (state.conversationId === convId) return; // already loaded
+    if (state.conversationId === convId) return;
     getChatHistory(session.jwt, convId)
       .then((res) => {
         dispatch({
@@ -156,7 +155,6 @@ export default function InvestigationPage() {
       autoSentRef.current = false;
     }
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
-
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -179,7 +177,7 @@ export default function InvestigationPage() {
     setInput(e.target.value);
     const el = e.target;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 88) + "px"; // max ~3 lines
+    el.style.height = Math.min(el.scrollHeight, 88) + "px";
   };
 
   const sendMessage = useCallback(async (message: string) => {
@@ -189,7 +187,6 @@ export default function InvestigationPage() {
     setSubmitError(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    // Optimistically add user message
     const optimisticUserId = crypto.randomUUID();
     dispatch({
       type: "add_user_msg",
@@ -211,12 +208,10 @@ export default function InvestigationPage() {
         }
       );
 
-      // Set conversation id if new
       if (!state.conversationId) {
         dispatch({ type: "set_conv_id", id: conversation_id });
       }
 
-      // Add AI placeholder message
       dispatch({
         type: "add_ai_msg",
         msg: {
@@ -230,14 +225,12 @@ export default function InvestigationPage() {
         },
       });
 
-      // Stream the response
       await streamResponse(conversation_id, investigation_id, message_id, session.jwt);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to send message.");
     }
   }, [state.isStreaming, state.conversationId, session, selectedConn, dispatch, streamResponse]);
 
-  // Wrapper used by keyboard handler and Send button — reads current input state
   const handleSend = useCallback(() => sendMessage(input), [sendMessage, input]);
 
   // Auto-send when arriving from a signal deep-link (?prompt=...)
@@ -247,7 +240,6 @@ export default function InvestigationPage() {
     if (!prompt || autoSentRef.current || !session || state.isStreaming) return;
     setInput(prompt);
     autoSentRef.current = true;
-    // Small delay so selectedConn from the connections effect settles first
     const t = setTimeout(() => sendMessage(prompt), 200);
     return () => clearTimeout(t);
   }, [session, selectedConn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -259,46 +251,50 @@ export default function InvestigationPage() {
     }
   };
 
-
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-gray-100 overflow-hidden">
+    <div className="flex flex-col h-full text-zinc-100 overflow-hidden">
       {/* ── Top bar ── */}
-      <div className="shrink-0 flex items-center gap-3 px-4 py-3 bg-gray-950 border-b border-gray-800">
-        <h1 className="text-sm font-semibold text-gray-200 mr-auto">viriya chat</h1>
+      <div
+        className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]"
+        style={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(3,3,3,0.6)" }}
+      >
+        <h1 className="text-sm font-semibold text-zinc-200 mr-auto">viriya chat</h1>
 
         {/* Connection selector */}
         <div className="relative" ref={connRef}>
           <button
             type="button"
             onClick={() => setConnOpen((v) => !v)}
-            className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-300 transition-colors hover:border-gray-600"
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.06] backdrop-blur-sm"
           >
-            <Database className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+            <Database className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
             <span className="max-w-[120px] truncate">{selectedConn.label}</span>
-            <ChevronDown className="h-3 w-3 text-gray-500 shrink-0" />
+            <ChevronDown className="h-3 w-3 text-zinc-600 shrink-0" />
           </button>
           {connOpen && (
-            <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-20">
+            <div
+              className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-white/[0.10] shadow-2xl z-20 overflow-hidden"
+              style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(5,5,5,0.95)" }}
+            >
               {connections.map((c) => (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => { setSelectedConn(c); setConnOpen(false); }}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs transition-colors hover:bg-gray-800 first:rounded-t-lg last:rounded-b-lg ${
-                    c.id === selectedConn.id ? "text-sky-400" : "text-gray-300"
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05] first:rounded-t-xl last:rounded-b-xl ${
+                    c.id === selectedConn.id ? "text-sky-400" : "text-zinc-300"
                   }`}
                 >
-                  <Database className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                  <Database className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
                   <div className="min-w-0">
                     <div className="truncate">{c.label}</div>
-                    <div className="font-mono text-xs text-gray-500">{c.kind}</div>
+                    <div className="font-mono text-xs text-zinc-600">{c.kind}</div>
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
-
       </div>
 
       {/* ── Messages area ── */}
@@ -306,11 +302,11 @@ export default function InvestigationPage() {
         {state.messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center max-w-sm">
-              <p className="text-gray-400 text-sm">
+              <p className="text-zinc-500 text-sm">
                 Connected to{" "}
-                <span className="text-gray-200 font-medium">{selectedConn.label}</span>.
+                <span className="text-zinc-200 font-medium">{selectedConn.label}</span>.
               </p>
-              <p className="text-gray-500 text-sm mt-1">
+              <p className="text-zinc-600 text-sm mt-1">
                 Ask anything about your data in plain English.
               </p>
             </div>
@@ -326,7 +322,7 @@ export default function InvestigationPage() {
                     <div className="w-6 h-6 rounded-full bg-sky-500/20 border border-sky-500/40 flex items-center justify-center shrink-0">
                       <span className="text-xs text-sky-400 font-bold">v</span>
                     </div>
-                    <span className="text-xs text-gray-500">viriya</span>
+                    <span className="text-xs text-zinc-600">viriya</span>
                   </div>
                   <div className="pl-8">
                     <AiMessageBubble msg={msg} />
@@ -342,7 +338,7 @@ export default function InvestigationPage() {
       {/* ── Error banner ── */}
       {submitError && (
         <div className="shrink-0 mx-4 mb-2">
-          <div className="flex items-center gap-2 rounded-lg border border-red-800 bg-red-950/50 px-4 py-2 text-xs text-red-300">
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2 text-xs text-red-400">
             <span className="flex-1">{submitError}</span>
             <button onClick={() => setSubmitError(null)}>
               <X className="w-3.5 h-3.5" />
@@ -352,9 +348,12 @@ export default function InvestigationPage() {
       )}
 
       {/* ── Input bar ── */}
-      <div className="shrink-0 border-t border-gray-800 bg-gray-950 px-4 py-3">
+      <div
+        className="shrink-0 border-t border-white/[0.06] px-4 py-3"
+        style={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(3,3,3,0.5)" }}
+      >
         <div className="mx-auto max-w-3xl flex items-end gap-3">
-          <div className="flex-1 rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 focus-within:border-sky-500/50 transition-colors">
+          <div className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 focus-within:border-sky-500/40 focus-within:bg-sky-500/[0.03] transition-colors backdrop-blur-sm">
             <textarea
               ref={textareaRef}
               value={input}
@@ -363,7 +362,7 @@ export default function InvestigationPage() {
               placeholder="Ask a Question... (Enter to send, Shift+Enter for newline)"
               rows={1}
               disabled={state.isStreaming}
-              className="w-full resize-none bg-transparent text-sm text-gray-100 placeholder-gray-500 outline-none leading-relaxed disabled:opacity-50"
+              className="w-full resize-none bg-transparent text-sm text-zinc-100 placeholder-zinc-700 outline-none leading-relaxed disabled:opacity-50"
             />
           </div>
 
@@ -371,7 +370,7 @@ export default function InvestigationPage() {
             <button
               type="button"
               onClick={stop}
-              className="shrink-0 flex items-center gap-2 rounded-xl bg-gray-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-600"
+              className="shrink-0 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.05] px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.08]"
             >
               <X className="h-4 w-4" />
               Stop
@@ -381,7 +380,7 @@ export default function InvestigationPage() {
               type="button"
               onClick={handleSend}
               disabled={!input.trim() || !session}
-              className="shrink-0 flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
+              className="shrink-0 flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-medium text-white shadow-[0_0_20px_rgba(14,165,233,0.3)] transition-all hover:bg-sky-400 hover:shadow-[0_0_28px_rgba(14,165,233,0.45)] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               <Send className="h-4 w-4" />
               Send

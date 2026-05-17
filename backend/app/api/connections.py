@@ -2,6 +2,7 @@
 P1/P3 — Connection registration, schema crawl, quality scan.
 Owner: BE
 """
+import asyncio
 import dataclasses
 import duckdb
 import anyio
@@ -13,7 +14,14 @@ from app.appwrite.auth import require_auth
 from app.db.session import DuckDBSession
 from app.db.schema_crawler import crawl_schema
 from app.quality.scanner import run_quality_scan
-from app.appwrite.store import save_connection, get_connection
+from app.appwrite.store import (
+    save_connection,
+    get_connection,
+    delete_connection as _store_delete_connection,
+    delete_conversations_for_connection as _store_delete_convs,
+    delete_investigations_for_connection as _store_delete_invs,
+)
+from app.state import investigations as _investigations, conversations as _conversations
 
 router = APIRouter()
 
@@ -120,6 +128,41 @@ async def register_connection(body: RegisterConnectionRequest, user=Depends(requ
         session.close()
 
     return {"connection_id": connection_id}
+
+
+@router.delete("/connections/{connection_id}")
+async def delete_connection(connection_id: str, user=Depends(require_auth)):
+    workspace_id = user["workspace_id"]
+
+    # 1. Remove from Appwrite — also verifies ownership
+    deleted = await _store_delete_connection(connection_id, workspace_id)
+    if not deleted:
+        raise HTTPException(404, "Connection not found")
+
+    # 2. Evict signal cache for this connection
+    from app.api.signals import evict_connection_cache
+    evict_connection_cache(connection_id)
+
+    # 3. Purge in-memory conversations and investigations for this connection
+    conv_ids = [
+        cid for cid, conv in list(_conversations.items())
+        if conv.get("connection_id") == connection_id
+    ]
+    for cid in conv_ids:
+        _conversations.pop(cid, None)
+
+    inv_ids = [
+        iid for iid, inv in list(_investigations.items())
+        if inv.get("connection_id") == connection_id
+    ]
+    for iid in inv_ids:
+        _investigations.pop(iid, None)
+
+    # 4. Best-effort clean persisted conversations + investigations (fire-and-forget)
+    asyncio.create_task(_store_delete_convs(connection_id, workspace_id))
+    asyncio.create_task(_store_delete_invs(connection_id, workspace_id))
+
+    return {"status": "deleted", "connection_id": connection_id}
 
 
 @router.get("/connections/{connection_id}/schema")
