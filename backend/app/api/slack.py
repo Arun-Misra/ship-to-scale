@@ -86,7 +86,21 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
         if workspace_id and not connection_id:
             conns = await get_connections_for_workspace(workspace_id=workspace_id)
             if conns:
-                connection_id = conns[0].get("$id", "")
+                # Prefer any connection that has an explicit DSN, or one whose kind suggests Postgres.
+                preferred = None
+                for c in conns:
+                    if c.get("dsn"):
+                        preferred = c
+                        break
+                if not preferred:
+                    for c in conns:
+                        if str(c.get("kind", "")).lower().startswith("post"):
+                            preferred = c
+                            break
+                if not preferred:
+                    preferred = conns[0]
+                connection_id = preferred.get("$id", "")
+                logger.info("Slack: selected connection %s for workspace %s", connection_id, workspace_id)
 
         if not channel or not question:
             return {"status": "ok"}

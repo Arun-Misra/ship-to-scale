@@ -33,13 +33,11 @@ async def handle_slack_event(
                 bot_token,
                 channel,
                 thread_ts,
-                "I am connected to Slack, but no data source is configured for this workspace yet. "
-                "Connect a source in the dashboard and try again.",
+                "No data source is connected to this workspace yet, so I cannot run the query.",
             )
             return
 
-        await slack_post(bot_token, channel, thread_ts, "_Investigating your question..._ ⏳")
-
+        logger.info("Slack handler starting: workspace=%s connection=%s question=%s", workspace_id, connection_id, (question or '')[:120])
         investigation_id = str(uuid.uuid4())
         final_event: dict | None = None
         chat_text: str | None = None
@@ -75,6 +73,7 @@ async def handle_slack_event(
                     except Exception:
                         pass
 
+        logger.info("Slack investigation completed: chat_text_present=%s final_present=%s", bool(chat_text), bool(final_event))
         reply = _compose_reply(chat_text, final_event)
         await slack_post(bot_token, channel, thread_ts, reply)
 
@@ -85,7 +84,7 @@ async def handle_slack_event(
                 bot_token,
                 channel,
                 thread_ts,
-                "I ran into an error while investigating. Please check the dashboard for details.",
+                "I could not generate details for this query due to an internal processing error.",
             )
         except Exception:
             pass
@@ -98,7 +97,7 @@ def _compose_reply(chat_text: str | None, final_event: dict | None) -> str:
     final_event (from final event) has structured verdict/confidence/recommended.
     """
     if not chat_text and not final_event:
-        return "Investigation complete — no conclusion reached. Check the dashboard for details."
+        return "I could not extract conclusive details for this query."
 
     lines: list[str] = []
 
