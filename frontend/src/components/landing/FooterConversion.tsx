@@ -144,7 +144,7 @@ export default function FooterConversion() {
 
         <div className="flex flex-wrap items-center justify-center gap-3" id="technical-docs">
           <a
-            href="/investigate"
+            href="/chat"
             className="rounded-md bg-sky-500 px-6 py-3 text-lg font-medium text-white transition-all hover:bg-sky-600"
           >
             Launch Workspace

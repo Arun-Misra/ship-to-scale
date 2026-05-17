@@ -5,7 +5,44 @@ Runs on in-memory sample ONLY. Never pushes fuzzy matching to Postgres.
 import uuid
 import duckdb
 
-ID_COLUMN_HINTS = {"email", "name", "customer_name", "user_name", "id", "phone", "mobile"}
+# Columns where uniqueness is always expected (regardless of table context)
+UNIQUE_HINTS = {"email", "name", "customer_name", "user_name", "phone", "mobile"}
+
+
+def _singular(name: str) -> str:
+    """Best-effort plural → singular for table name matching."""
+    if name.endswith("ies"):
+        return name[:-3] + "y"   # companies → company
+    if name.endswith("es") and len(name) > 3:
+        return name[:-2]          # processes → process
+    if name.endswith("s") and len(name) > 2:
+        return name[:-1]          # orders → order
+    return name
+
+
+def _is_uniqueness_candidate(col: str, table_name: str) -> bool:
+    """
+    Returns True only if the column is plausibly a unique identifier for this table.
+
+    Exact "id" column or {table}_id (own PK) → check.
+    {other}_id columns → skip — they are foreign keys where repeats are expected.
+    """
+    col_lower = col.lower()
+    table_lower = table_name.lower()
+    table_singular = _singular(table_lower)
+
+    if col_lower.endswith("_id"):
+        prefix = col_lower[:-3]  # strip "_id"
+        # Own PK: "order_id" in "orders", "customer_id" in "customers", "company_id" in "companies"
+        if prefix in table_lower or prefix in table_singular:
+            return True
+        # Foreign key — customer_id in orders, order_id in invoices, etc. → skip
+        return False
+
+    if col_lower == "id":
+        return True
+
+    return any(hint in col_lower for hint in UNIQUE_HINTS)
 
 
 def check_likely_duplicates(
@@ -15,11 +52,10 @@ def check_likely_duplicates(
     columns: list[str],
 ) -> list[dict]:
     issues = []
-    candidate_cols = [c for c in columns if any(hint in c.lower() for hint in ID_COLUMN_HINTS)]
+    candidate_cols = [c for c in columns if _is_uniqueness_candidate(c, table_name)]
 
     for col in candidate_cols:
         try:
-            # Simple exact-duplicate check on the candidate column (in DuckDB memory only)
             result = con.execute(f"""
                 SELECT
                     "{col}",

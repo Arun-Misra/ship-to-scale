@@ -1,32 +1,36 @@
 """
-Signals feed — computed live from the demo DuckDB snapshot.
-Each signal is a cheap statistical check that flags material deviations.
+Signals feed — statistical checks against any registered connection.
+Each signal is a cheap check that flags material deviations.
 """
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+import anyio
 
 from app.appwrite.auth import require_auth
+from app.appwrite.store import get_connection
 from app.db.session import DuckDBSession
 
 router = APIRouter()
 
-_cached_signals: list[dict] | None = None
+# Cache per connection_id → list[dict]
+_signal_cache: dict[str, list[dict]] = {}
 
 
-def _compute_signals() -> list[dict]:
-    session = DuckDBSession(mode="demo")
+def _compute_signals(con, schema_name: str) -> list[dict]:
     signals = []
-    try:
-        con = session.con
+    ts = datetime.now(timezone.utc).isoformat()
 
-        # 1. Refund rate by region — flag Asia as above-average
-        rows = con.execute("""
+    # 1. Refund rate by region
+    try:
+        rows = con.execute(f"""
             SELECT region,
                    COUNT(*) AS total,
                    SUM(CASE WHEN refunded THEN 1 ELSE 0 END) AS refunds,
                    ROUND(100.0 * SUM(CASE WHEN refunded THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct
-            FROM orders
+            FROM "{schema_name}"."orders"
             GROUP BY region
             ORDER BY pct DESC
         """).fetchall()
@@ -44,14 +48,17 @@ def _compute_signals() -> list[dict]:
                         "This may indicate product quality issues, fulfilment delays, or regional fraud patterns."
                     ),
                     "priority": "critical",
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                    "detected_at": ts,
                     "investigation": {"trigger": "refund_rate_anomaly"},
                 })
+    except Exception:
+        pass
 
-        # 2. Revenue gap between regions
-        rev_rows = con.execute("""
+    # 2. Revenue gap between regions
+    try:
+        rev_rows = con.execute(f"""
             SELECT region, ROUND(AVG(order_total), 2) AS avg_rev, COUNT(*) AS cnt
-            FROM orders
+            FROM "{schema_name}"."orders"
             GROUP BY region
             ORDER BY avg_rev DESC
         """).fetchall()
@@ -70,17 +77,20 @@ def _compute_signals() -> list[dict]:
                         "or pricing strategy misalignment."
                     ),
                     "priority": "warning",
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                    "detected_at": ts,
                     "investigation": {"trigger": "revenue_gap"},
                 })
+    except Exception:
+        pass
 
-        # 3. Date format inconsistency in orders.created_at
-        format_rows = con.execute("""
+    # 3. Date format inconsistency in orders.created_at
+    try:
+        format_rows = con.execute(f"""
             SELECT
                 SUM(CASE WHEN created_at LIKE '____-__-__' THEN 1 ELSE 0 END) AS iso_count,
                 SUM(CASE WHEN created_at LIKE '__/__/____' THEN 1 ELSE 0 END) AS us_count,
                 COUNT(*) AS total
-            FROM orders
+            FROM "{schema_name}"."orders"
         """).fetchone()
 
         if format_rows and format_rows[0] > 0 and format_rows[1] > 0:
@@ -93,21 +103,27 @@ def _compute_signals() -> list[dict]:
                     "This inconsistency breaks time-series queries and weekly/monthly aggregations."
                 ),
                 "priority": "warning",
-                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "detected_at": ts,
                 "investigation": None,
             })
+    except Exception:
+        pass
 
-        # 4. Top customer concentration check
-        conc_rows = con.execute("""
+    # 4. Top customer concentration
+    try:
+        conc_rows = con.execute(f"""
             SELECT c.name, COUNT(o.order_id) AS order_count, ROUND(SUM(o.order_total), 2) AS revenue
-            FROM orders o
-            JOIN customers c ON o.customer_id = c.customer_id
+            FROM "{schema_name}"."orders" o
+            JOIN "{schema_name}"."customers" c ON o.customer_id = c.customer_id
             GROUP BY c.name
             ORDER BY revenue DESC
             LIMIT 1
         """).fetchone()
 
-        total_revenue = con.execute("SELECT ROUND(SUM(order_total), 2) FROM orders").fetchone()[0]
+        total_revenue = con.execute(
+            f'SELECT ROUND(SUM(order_total), 2) FROM "{schema_name}"."orders"'
+        ).fetchone()[0]
+
         if conc_rows and total_revenue and total_revenue > 0:
             share = round(conc_rows[2] / total_revenue * 100, 1)
             if share > 5:
@@ -119,21 +135,50 @@ def _compute_signals() -> list[dict]:
                         f"across {conc_rows[1]} orders. High customer concentration creates churn risk."
                     ),
                     "priority": "informational",
-                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                    "detected_at": ts,
                     "investigation": {"trigger": "customer_concentration"},
                 })
-
     except Exception:
         pass
-    finally:
-        session.close()
 
     return signals
 
 
 @router.get("/signals")
-async def get_signals(user=Depends(require_auth)):
-    global _cached_signals
-    if _cached_signals is None:
-        _cached_signals = _compute_signals()
-    return {"signals": _cached_signals}
+async def get_signals(connection_id: Optional[str] = None, user=Depends(require_auth)):
+    # Resolve which connection to use
+    if not connection_id:
+        # No connection specified — use demo as default
+        session = DuckDBSession(mode="demo")
+        schema_name = "main"
+        cache_key = "__demo__"
+    elif connection_id == "demo":
+        session = DuckDBSession(mode="demo")
+        schema_name = "main"
+        cache_key = "demo"
+    else:
+        conn = await get_connection(connection_id, workspace_id=user["workspace_id"])
+        if not conn:
+            raise HTTPException(404, "Connection not found")
+        kind = conn.get("kind", "demo")
+        schema_name = "main" if kind == "demo" else "src"
+        session = (
+            DuckDBSession(mode="live", dsn=conn["dsn"])
+            if kind == "postgres"
+            else DuckDBSession(mode="demo")
+        )
+        cache_key = connection_id
+
+    if cache_key in _signal_cache:
+        session.close()
+        return {"signals": _signal_cache[cache_key], "connection_id": connection_id}
+
+    try:
+        signals = await anyio.to_thread.run_sync(
+            lambda: _compute_signals(session.con, schema_name)
+        )
+    finally:
+        session.close()
+
+    _signal_cache[cache_key] = signals
+    return {"signals": signals, "connection_id": connection_id}

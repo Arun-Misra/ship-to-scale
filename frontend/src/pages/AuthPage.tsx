@@ -1,16 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Lock, Mail, User, ShieldAlert } from "lucide-react";
 import { useAppwrite } from "@/hooks/useAppwrite";
 
 export default function AuthPage(): JSX.Element {
-  const { login, signup, session } = useAppwrite();
-  const navigate = useNavigate();
-
-  // Redirect after session is set — runs after re-render so route tree is ready
-  useEffect(() => {
-    if (session) navigate("/dashboard", { replace: true });
-  }, [session, navigate]);
+  const { login, signup } = useAppwrite();
+  // Redirect is handled by PublicRoute in App.tsx — no navigate needed here
 
   // Responsive VH fix for mobile browsers
   useEffect(() => {
@@ -76,7 +70,7 @@ export default function AuthPage(): JSX.Element {
       } else {
         await login(email, password);
       }
-      // navigate is handled by the useEffect watching session
+      // redirect is handled by PublicRoute in App.tsx
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed.");
     } finally {

@@ -21,28 +21,52 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+// Redirects unauthenticated users to /login
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAppwrite();
+  if (loading) return null;
+  if (!session) return <Navigate to="/login" replace />;
+  return <AppShell>{children}</AppShell>;
+}
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Loading...</div>;
+// Redirects authenticated users away from public pages (login)
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { session, loading } = useAppwrite();
+  if (loading) return null;
+  if (session) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
+export default function App() {
+  const { loading } = useAppwrite();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-400">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={session ? <Navigate to="/dashboard" replace /> : <HomePage />} />
-        {session ? (
-          <>
-            <Route path="/dashboard" element={<AppShell><DashboardPage /></AppShell>} />
-            <Route path="/investigate" element={<AppShell><InvestigationPage /></AppShell>} />
-            <Route path="/connections" element={<AppShell><ConnectionsPage /></AppShell>} />
-            <Route path="/quality/:connectionId" element={<AppShell><QualityPage /></AppShell>} />
-            <Route path="/signals" element={<AppShell><SignalsPage /></AppShell>} />
-            <Route path="/semantic" element={<AppShell><SemanticPage /></AppShell>} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </>
-        ) : (
-          <Route path="*" element={<AuthPage />} />
-        )}
+        {/* Public */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<PublicRoute><AuthPage /></PublicRoute>} />
+
+        {/* Protected */}
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><InvestigationPage /></ProtectedRoute>} />
+        <Route path="/connections" element={<ProtectedRoute><ConnectionsPage /></ProtectedRoute>} />
+        <Route path="/data-quality" element={<ProtectedRoute><QualityPage /></ProtectedRoute>} />
+        <Route path="/data-quality/:connectionId" element={<ProtectedRoute><QualityPage /></ProtectedRoute>} />
+        <Route path="/signals" element={<ProtectedRoute><SignalsPage /></ProtectedRoute>} />
+        <Route path="/signals/:connectionId" element={<ProtectedRoute><SignalsPage /></ProtectedRoute>} />
+        <Route path="/semantic" element={<ProtectedRoute><SemanticPage /></ProtectedRoute>} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

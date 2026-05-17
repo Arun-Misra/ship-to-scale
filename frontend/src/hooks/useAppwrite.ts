@@ -1,8 +1,14 @@
 /**
- * P3/P4 — Appwrite auth session hook.
- * Returns the current session JWT for use in all API calls.
+ * Appwrite auth — single shared session state via React Context.
+ *
+ * WHY CONTEXT: useAppwrite() is called in many components (App, Sidebar,
+ * ProtectedRoute, AuthPage, page components). Without context each call
+ * creates its own useState — login/logout in one component wouldn't
+ * re-render the others, so route guards never fired.
+ *
+ * Uses React.createElement instead of JSX so this stays a .ts file.
  */
-import { useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { Client, Account, ID } from "appwrite";
 
 const client = new Client()
@@ -12,19 +18,29 @@ const client = new Client()
 const account = new Account(client);
 const DEV_BYPASS_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS_AUTH === "true";
 
-const DEV_SESSION: AppwriteSession = {
-  userId: "local-dev-user",
-  jwt: "local-dev-jwt",
-  workspaceId: "local-dev-workspace",
-};
-
 export interface AppwriteSession {
   userId: string;
   jwt: string;
   workspaceId: string;
 }
 
-export function useAppwrite() {
+const DEV_SESSION: AppwriteSession = {
+  userId: "local-dev-user",
+  jwt: "local-dev-jwt",
+  workspaceId: "local-dev-workspace",
+};
+
+interface AppwriteContextValue {
+  session: AppwriteSession | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name?: string) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AppwriteContext = createContext<AppwriteContextValue | null>(null);
+
+export function AppwriteProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AppwriteSession | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +50,6 @@ export function useAppwrite() {
       setLoading(false);
       return;
     }
-
     account.getSession("current")
       .then(async (s) => {
         const jwt = await account.createJWT();
@@ -46,19 +61,13 @@ export function useAppwrite() {
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (DEV_BYPASS_AUTH) {
-      setSession(DEV_SESSION);
-      return;
-    }
-
+    if (DEV_BYPASS_AUTH) { setSession(DEV_SESSION); return; }
     try {
       await account.createEmailPasswordSession(email, password);
     } catch (err: unknown) {
-      // If a session is already active, skip creation and just read it
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.toLowerCase().includes("session") || msg.toLowerCase().includes("invalid")) throw err;
     }
-
     const s = await account.getSession("current");
     const jwt = await account.createJWT();
     const prefs = await account.getPrefs();
@@ -66,14 +75,9 @@ export function useAppwrite() {
   };
 
   const signup = async (email: string, password: string, name?: string) => {
-    if (DEV_BYPASS_AUTH) {
-      setSession(DEV_SESSION);
-      return;
-    }
-
+    if (DEV_BYPASS_AUTH) { setSession(DEV_SESSION); return; }
     const user = await account.create(ID.unique(), email, password, name);
     await account.createEmailPasswordSession(email, password);
-    // Set workspace_id = user's own $id for data isolation
     await account.updatePrefs({ workspace_id: user.$id });
     const s = await account.getSession("current");
     const jwt = await account.createJWT();
@@ -81,14 +85,20 @@ export function useAppwrite() {
   };
 
   const logout = async () => {
-    if (DEV_BYPASS_AUTH) {
-      setSession(null);
-      return;
-    }
-
+    if (DEV_BYPASS_AUTH) { setSession(null); return; }
     await account.deleteSession("current");
     setSession(null);
   };
 
-  return { session, loading, login, signup, logout };
+  return React.createElement(
+    AppwriteContext.Provider,
+    { value: { session, loading, login, signup, logout } },
+    children,
+  );
+}
+
+export function useAppwrite(): AppwriteContextValue {
+  const ctx = useContext(AppwriteContext);
+  if (!ctx) throw new Error("useAppwrite must be used inside <AppwriteProvider>");
+  return ctx;
 }

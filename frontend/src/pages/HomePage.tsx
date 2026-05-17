@@ -231,7 +231,7 @@ export default function HomePage() {
         </nav>
 
         <Link
-          to="/investigate"
+          to="/chat"
           className="rounded-md bg-zinc-100 px-4 py-2 text-base font-medium text-zinc-950 transition-colors hover:bg-zinc-200"
         >
           Launch App
@@ -258,7 +258,7 @@ export default function HomePage() {
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link
-                to="/investigate"
+                to="/chat"
                 className="rounded-md bg-sky-500 px-6 py-3 text-base font-medium text-white shadow-[0_0_24px_rgba(14,165,233,0.25)] transition-all duration-300 hover:bg-sky-400 hover:shadow-[0_0_28px_rgba(14,165,233,0.35)]"
               >
                 Deploy Workspace

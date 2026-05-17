@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Database, Plus, BarChart3, Loader2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Database, Plus, BarChart3, Loader2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppwrite } from "@/hooks/useAppwrite";
 import { getConnections, registerConnection } from "@/api/client";
@@ -183,7 +183,7 @@ export default function ConnectionsPage() {
               <div className="flex items-center gap-3">
                 <KindBadge kind={conn.kind} />
                 <Link
-                  to={`/quality/${conn.id}`}
+                  to={`/data-quality/${conn.id}`}
                   className="inline-flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-950 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-sky-500/40 hover:text-sky-300"
                 >
                   <BarChart3 className="h-3.5 w-3.5" />

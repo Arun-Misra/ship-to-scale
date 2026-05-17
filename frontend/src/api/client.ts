@@ -6,10 +6,10 @@ import type {
   QualityReport,
   DashboardSummary,
   Signal,
-  FinalResult,
   Connection,
   SemanticDef,
   InvestigationRecord,
+  ChatMessage,
 } from "@/types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
@@ -81,8 +81,9 @@ export async function getInvestigation(jwt: string, investigationId: string): Pr
 
 // ── Signals ───────────────────────────────────────────────────────────────────
 
-export async function getSignals(jwt: string): Promise<{ signals: Signal[] }> {
-  return apiFetch<{ signals: Signal[] }>("/signals", jwt);
+export async function getSignals(jwt: string, connectionId?: string): Promise<{ signals: Signal[]; connection_id?: string }> {
+  const qs = connectionId ? `?connection_id=${encodeURIComponent(connectionId)}` : "";
+  return apiFetch<{ signals: Signal[]; connection_id?: string }>(`/signals${qs}`, jwt);
 }
 
 // ── Semantic ──────────────────────────────────────────────────────────────────
@@ -125,4 +126,24 @@ export async function dispatchWeeklyReport(jwt: string) {
 
 export async function getSlackInstallUrl(jwt: string, workspaceId: string) {
   return apiFetch<{ url: string }>(`/slack/install-url?workspace_id=${workspaceId}`, jwt);
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+export async function startChat(
+  jwt: string,
+  body: { conversation_id?: string; connection_id: string; message: string }
+): Promise<{ conversation_id: string; message_id: string; investigation_id: string }> {
+  return apiFetch("/chat", jwt, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function getChatHistory(jwt: string, conversationId: string) {
+  return apiFetch<{ conversation_id: string; connection_id: string; messages: ChatMessage[] }>(
+    `/chat/${conversationId}`,
+    jwt
+  );
+}
+
+export async function listChats(jwt: string): Promise<{ conversations: Array<{ id: string; title: string; message_count: number; connection_id: string }> }> {
+  return apiFetch("/chat", jwt);
 }

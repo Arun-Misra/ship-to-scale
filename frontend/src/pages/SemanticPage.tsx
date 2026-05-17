@@ -41,8 +41,8 @@ export default function SemanticPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session) return;
-    if (!term.trim() || !definitionSql.trim()) {
-      setFormError("Term and SQL definition are required.");
+    if (!term.trim() || !naturalLanguage.trim() || !definitionSql.trim()) {
+      setFormError("Term, natural language description, and SQL definition are required.");
       return;
     }
     setSubmitting(true);
@@ -133,7 +133,7 @@ export default function SemanticPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Natural language description</label>
+            <label className="block text-xs text-gray-400 mb-1">Natural language description *</label>
             <input
               value={naturalLanguage}
               onChange={(e) => setNaturalLanguage(e.target.value)}

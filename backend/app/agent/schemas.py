@@ -34,10 +34,26 @@ class ConcludeAction(BaseModel):
     chart: ChartConfig | None = None  # None if no chart is relevant
 
 
+class ClarifyAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["clarify"]
+    question: str  # the clarification question to ask the user
+
+
 Action = Annotated[
-    SqlQueryAction | ConcludeAction,
+    SqlQueryAction | ConcludeAction | ClarifyAction,
     Field(discriminator="type"),
 ]
+
+
+class ClarificationEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str
+
+
+class ChatResponseEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str
 
 
 class Observation(BaseModel):

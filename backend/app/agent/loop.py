@@ -14,12 +14,13 @@ from typing import AsyncIterator
 from pydantic import ValidationError
 
 from app.agent.schemas import (
-    Action, SqlQueryAction, ConcludeAction,
+    Action, SqlQueryAction, ConcludeAction, ClarifyAction,
     Observation, StepStartEvent, StepEndEvent, FinalEvent, ErrorEvent,
+    ClarificationEvent, ChatResponseEvent,
 )
 from app.agent.sse import sse_struct, sse_reasoning, sse_keepalive
 from app.agent.executor import explain_sql, execute_sql
-from app.agent.planner import build_system_prompt, stream_reasoning, generate_action
+from app.agent.planner import build_system_prompt, generate_action, generate_chat_response
 from app.db.session import DuckDBSession
 from app.appwrite.store import list_semantic_definitions, get_connection, update_investigation_result
 from app.db.schema_crawler import crawl_schema
@@ -57,11 +58,15 @@ async def run_investigation(
     question: str,
     connection_id: str,
     workspace_id: str,
+    conversation_history: list[dict] | None = None,
 ) -> AsyncIterator[bytes]:
     """
     Full ReAct loop. Yields SSE bytes.
     The agent loop is testable with zero auth — hardcode workspace_id + local Postgres.
     """
+    if conversation_history is None:
+        conversation_history = []
+
     semantic_defs = await list_semantic_definitions(workspace_id)
 
     conn_doc = await get_connection(connection_id, workspace_id)
@@ -108,21 +113,15 @@ async def run_investigation(
 
             yield sse_struct("step_start", StepStartEvent(step=step, budget_remaining=step_budget - step))
 
-            # Free-text reasoning — display only, never parsed
-            reasoning_prompt = _build_reasoning_prompt(system_prompt, question, observations)
-            async for token in stream_reasoning(reasoning_prompt):
-                yield sse_reasoning(token)
-                if (ka := _keepalive()):
-                    yield ka
-
-            # Structured action — Pydantic validated
-            action_prompt = _build_action_prompt(system_prompt, question, observations)
+            # Single LLM call: returns reasoning text + structured action together
+            action_prompt = _build_action_prompt(system_prompt, question, observations, conversation_history)
             action: Action | None = None
             observation: Observation | None = None
+            reasoning_text = ""
 
             while retry_budget > 0:
                 try:
-                    action = generate_action(action_prompt)
+                    reasoning_text, action = generate_action(action_prompt)
                     break
                 except (ValidationError, Exception) as e:
                     retry_budget -= 1
@@ -133,7 +132,13 @@ async def run_investigation(
                     observations.append(observation)
                     if retry_budget == 0:
                         break
-                    action_prompt = _build_action_prompt(system_prompt, question, observations)
+                    action_prompt = _build_action_prompt(system_prompt, question, observations, conversation_history)
+
+            # Emit reasoning before the action so the UI shows thinking first
+            if reasoning_text:
+                yield sse_reasoning(reasoning_text)
+                if (ka := _keepalive()):
+                    yield ka
 
             if action is None:
                 # Retry budget exhausted — force conclude with what we have
@@ -144,6 +149,14 @@ async def run_investigation(
                     confidence="low",
                     recommended_action="Review the question and try again.",
                 )
+
+            if isinstance(action, ClarifyAction):
+                yield sse_struct("action", action)
+                yield sse_struct("clarification", ClarificationEvent(question=action.question))
+                yield sse_struct("step_end", StepEndEvent(step=step))
+                if investigation_id in _investigations:
+                    _investigations[investigation_id]["status"] = "needs_clarification"
+                return
 
             if isinstance(action, ConcludeAction):
                 yield sse_struct("action", action)
@@ -160,6 +173,17 @@ async def run_investigation(
                     definition_receipts=_build_receipts(semantic_defs),
                 )
                 yield sse_struct("final", final_event)
+                # Generate human-readable chat response
+                try:
+                    chat_text = await asyncio.to_thread(
+                        generate_chat_response, question, {
+                            "verdict": action.verdict, "root_cause": action.root_cause,
+                            "confidence": action.confidence, "recommended_action": action.recommended_action,
+                        }, conversation_history
+                    )
+                    yield sse_struct("chat_response", ChatResponseEvent(text=chat_text))
+                except Exception:
+                    yield sse_struct("chat_response", ChatResponseEvent(text=action.root_cause))
                 asyncio.create_task(_persist_result(
                     investigation_id, action.verdict, action.root_cause,
                     action.confidence, action.recommended_action,
@@ -192,18 +216,30 @@ async def run_investigation(
             yield sse_struct("step_end", StepEndEvent(step=step))
 
         # Step budget exhausted — graceful partial
+        budget_root_cause = "Step budget exhausted. Partial findings in the observations above."
+        budget_recommended = "Try a more specific question or increase the step budget."
         yield sse_struct(
             "final",
             FinalEvent(
                 investigation_id=investigation_id,
                 verdict="inconclusive",
-                root_cause="Step budget exhausted. Partial findings in the observations above.",
+                root_cause=budget_root_cause,
                 confidence="low",
-                recommended_action="Try a more specific question or increase the step budget.",
+                recommended_action=budget_recommended,
                 data=last_sql_result[1] if last_sql_result else [],
                 definition_receipts=_build_receipts(semantic_defs),
             ),
         )
+        try:
+            chat_text = await asyncio.to_thread(
+                generate_chat_response, question, {
+                    "verdict": "inconclusive", "root_cause": budget_root_cause,
+                    "confidence": "low", "recommended_action": budget_recommended,
+                }, conversation_history
+            )
+            yield sse_struct("chat_response", ChatResponseEvent(text=chat_text))
+        except Exception:
+            yield sse_struct("chat_response", ChatResponseEvent(text=budget_root_cause))
         asyncio.create_task(_persist_result(
             investigation_id, "inconclusive",
             "Step budget exhausted.", "low", "Try a more specific question.",
@@ -216,21 +252,30 @@ async def run_investigation(
             session.close()
 
 
-def _build_reasoning_prompt(system: str, question: str, observations: list) -> str:
-    obs_text = "\n".join(f"Step {o.step}: {o.status} — {o.error or o.preview}" for o in observations)
-    return f"{system}\n\nQuestion: {question}\n\nObservations so far:\n{obs_text}\n\nThink step by step about what to investigate next:"
+def _format_history(conversation_history: list[dict]) -> str:
+    """Format the last 6 messages of conversation history for prompt injection."""
+    if not conversation_history:
+        return ""
+    lines = []
+    for m in conversation_history[-6:]:
+        role = "User" if m.get("role") == "user" else "Assistant"
+        lines.append(f"{role}: {m.get('content', '')}")
+    return "Conversation history:\n" + "\n".join(lines) + "\n\n"
 
 
-def _build_action_prompt(system: str, question: str, observations: list) -> str:
+def _build_action_prompt(system: str, question: str, observations: list, conversation_history: list[dict] | None = None) -> str:
     obs_text = "\n".join(f"Step {o.step}: {o.status} — {o.error or o.preview}" for o in observations)
+    history_text = _format_history(conversation_history or [])
     return (
-        f"{system}\n\nQuestion: {question}\n\nObservations so far:\n{obs_text}\n\n"
+        f"{system}\n\n{history_text}Question: {question}\n\nObservations so far:\n{obs_text}\n\n"
         "Output exactly ONE raw JSON object. No markdown fences. No explanation text before or after.\n"
-        "Use EXACTLY one of these two formats:\n"
-        '  {"type": "sql_query", "sql": "<DuckDB SELECT statement>", "intent": "<one-line description>"}\n'
-        '  {"type": "conclude", "verdict": "confirmed|refuted|inconclusive", '
+        "Include an optional 'reasoning' field with 1-2 sentences of thinking. Use EXACTLY one of these formats:\n"
+        '  {"reasoning": "<brief thinking>", "type": "sql_query", "sql": "<DuckDB SELECT>", "intent": "<one-line>"}\n'
+        '  {"reasoning": "<brief thinking>", "type": "conclude", "verdict": "confirmed|refuted|inconclusive", '
         '"root_cause": "<explanation>", "confidence": "low|medium|high", "recommended_action": "<action>"}\n'
-        'The "type" field is required. Use "sql_query" to run another query, "conclude" when you have enough evidence.'
+        '  {"reasoning": "<brief thinking>", "type": "clarify", "question": "<clarification question>"}\n'
+        'The "type" field is required. Use "sql_query" to run another query, "conclude" when you have enough evidence, '
+        '"clarify" only when the question is too ambiguous to investigate.'
     )
 
 

@@ -9,7 +9,7 @@ export interface ChartConfig {
   series_label: string;
 }
 
-export type ActionType = "sql_query" | "conclude";
+export type ActionType = "sql_query" | "conclude" | "clarify";
 export type Verdict = "confirmed" | "refuted" | "inconclusive";
 export type Confidence = "low" | "medium" | "high";
 export type ObservationStatus =
@@ -37,7 +37,13 @@ export interface ConcludeAction {
   chart: ChartConfig | null;
 }
 
-export type Action = SqlQueryAction | ConcludeAction;
+export interface ClarifyAction {
+  type: "clarify";
+  step: number;
+  question: string;
+}
+
+export type Action = SqlQueryAction | ConcludeAction | ClarifyAction;
 
 export interface Observation {
   step: number;
@@ -81,6 +87,25 @@ export interface InvestigationState {
   final: FinalResult | null;
   error: string | null;
   isStreaming: boolean;
+}
+
+// Chat types
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  investigation_id?: string;
+  status?: "streaming" | "done" | "needs_clarification";
+  steps?: StepState[];
+  final?: FinalResult | null;
+  is_clarification?: boolean;
+  timestamp?: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  connection_id: string;
+  messages: ChatMessage[];
 }
 
 // Quality scan types
@@ -166,12 +191,10 @@ export interface DashboardSummary {
   connections: Array<{ id: string; label: string; kind: string }>;
   last_query_at: string | null;
   key_metrics: Array<{ label: string; value: string; trend: string | null }>;
-  recent_investigations: Array<{
+  recent_conversations: Array<{
     id: string;
-    question: string;
+    title: string;
+    message_count: number;
     connection_id: string;
-    status: string;
-    verdict: Verdict | null;
-    conclusion: string | null;
   }>;
 }

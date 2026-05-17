@@ -3,8 +3,8 @@
  * The LLM only emits ChartConfig — it never sees the raw data.
  */
 import {
-  LineChart, BarChart, AreaChart, ScatterChart, PieChart,
-  Line, Bar, Area, Scatter, Pie, Cell,
+  LineChart, BarChart, AreaChart, PieChart,
+  Line, Bar, Area, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import type { ChartConfig } from "@/types";

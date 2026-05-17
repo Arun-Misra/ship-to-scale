@@ -9,7 +9,6 @@ Fallback: extract_json() regex strip before every model_validate_json()
 """
 import json
 import re
-from typing import AsyncIterator
 
 from google import genai
 from google.genai.types import GenerateContentConfig
@@ -41,16 +40,22 @@ def _get_client() -> genai.Client:
 _ACTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "type": {"type": "string", "enum": ["sql_query", "conclude"]},
+        "reasoning": {"type": "string"},   # brief thinking — display-only, stripped before Pydantic
+        "type": {"type": "string", "enum": ["sql_query", "conclude", "clarify"]},
         "sql": {"type": "string"},
         "intent": {"type": "string"},
         "verdict": {"type": "string", "enum": ["confirmed", "refuted", "inconclusive"]},
         "root_cause": {"type": "string"},
         "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
         "recommended_action": {"type": "string"},
+        "question": {"type": "string"},
     },
     "required": ["type"],
 }
+
+
+def _is_gemma(model: str) -> bool:
+    return "gemma" in model.lower()
 
 
 def extract_json(text: str) -> str:
@@ -105,24 +110,11 @@ DuckDB date notes (critical — the created_at column is VARCHAR with mixed form
 """
 
 
-async def stream_reasoning(prompt: str) -> AsyncIterator[str]:
-    """Reasoning tokens — display-only, never parsed for control flow.
-    Uses generate_content (not streaming) to avoid MALFORMED_RESPONSE issues with Gemma models.
-    Failures are swallowed silently."""
-    try:
-        response = _get_client().models.generate_content(
-            model=settings.gemini_model,
-            contents=prompt,
-        )
-        text = _response_text(response)
-        if text:
-            yield text
-    except Exception:
-        yield "> Analyzing..."
 
 
 _SQL_QUERY_KEYS = {"type", "sql", "intent"}
 _CONCLUDE_KEYS = {"type", "verdict", "root_cause", "confidence", "recommended_action", "chart"}
+_CLARIFY_KEYS = {"type", "question"}
 
 
 def _normalize_action(raw: dict) -> dict:
@@ -139,6 +131,7 @@ def _normalize_action(raw: dict) -> dict:
         "sql": "sql_query", "query": "sql_query", "SQL": "sql_query",
         "sql-query": "sql_query", "sqlquery": "sql_query",
         "CONCLUDE": "conclude", "finish": "conclude", "done": "conclude", "end": "conclude",
+        "ask": "clarify", "clarification": "clarify", "ask_clarification": "clarify",
     }
     if raw.get("type") in type_map:
         raw["type"] = type_map[raw["type"]]
@@ -161,6 +154,8 @@ def _strip_action(raw: dict) -> dict:
         return {k: v for k, v in raw.items() if k in _SQL_QUERY_KEYS}
     if action_type == "conclude":
         return {k: v for k, v in raw.items() if k in _CONCLUDE_KEYS}
+    if action_type == "clarify":
+        return {k: v for k, v in raw.items() if k in _CLARIFY_KEYS}
     return raw
 
 
@@ -183,22 +178,22 @@ def _response_text(response) -> str:
     raise ValueError("Empty or malformed response from model")
 
 
-def generate_action(prompt: str) -> Action:
+def generate_action(prompt: str) -> tuple[str, Action]:
     """
-    Generate a structured Action.
-    Tries each API key in the pool once. For each key, attempts structured output first
-    (Gemini models) then falls back to plain generation (Gemma models).
-    Raises the last exception only after all keys are exhausted.
+    Generate a structured Action plus inline reasoning in one LLM call.
+    Returns (reasoning_text, action). reasoning_text may be empty.
+
+    Gemini models: uses structured JSON output directly (no fallback needed).
+    Gemma models: skips structured output (always fails) and goes straight to plain text.
     """
-    # Ensure pool is initialized; _get_client() handles first-time setup.
     _get_client()
     last_error: Exception = RuntimeError("No Gemini clients available")
 
     for client in _clients:
         try:
             text = ""
-            # Structured output (works on Gemini, returns 500 on Gemma — caught below)
-            try:
+            if not _is_gemma(settings.gemini_model):
+                # Gemini supports structured output — single call, no fallback needed
                 response = client.models.generate_content(
                     model=settings.gemini_model,
                     contents=prompt,
@@ -208,11 +203,8 @@ def generate_action(prompt: str) -> Action:
                     ),
                 )
                 text = _response_text(response)
-            except Exception:
-                pass
-
-            # Plain generation fallback (required for Gemma models)
-            if not text:
+            else:
+                # Gemma: plain text only
                 response = client.models.generate_content(
                     model=settings.gemini_model,
                     contents=prompt,
@@ -220,9 +212,42 @@ def generate_action(prompt: str) -> Action:
                 text = _response_text(response)
 
             raw = json.loads(extract_json(text))
-            return _action_adapter.validate_python(_strip_action(_normalize_action(raw)))
+            reasoning = raw.pop("reasoning", "") or ""
+            action = _action_adapter.validate_python(_strip_action(_normalize_action(raw)))
+            return reasoning, action
         except Exception as e:
             last_error = e
             continue
 
     raise last_error
+
+
+def generate_chat_response(question: str, findings: dict, conversation_history: list[dict]) -> str:
+    """Generate a short human-readable chat response from investigation findings."""
+    history_text = ""
+    if conversation_history:
+        lines = []
+        for m in conversation_history[-6:]:  # last 3 turns
+            role = "User" if m["role"] == "user" else "Assistant"
+            lines.append(f"{role}: {m['content']}")
+        history_text = "\n".join(lines)
+
+    prompt = (
+        "You are a friendly data analyst. Write a clear, conversational 2-4 sentence response to the user's question "
+        "based on the investigation findings. Be specific with numbers. Don't use bullet points or markdown.\n\n"
+        + (f"Conversation so far:\n{history_text}\n\n" if history_text else "")
+        + f"User's question: {question}\n\n"
+        f"Findings — verdict: {findings['verdict']}, root cause: {findings['root_cause']}, "
+        f"confidence: {findings['confidence']}, recommended action: {findings['recommended_action']}\n\n"
+        "Write conversational response:"
+    )
+    _get_client()
+    for client in _clients:
+        try:
+            response = client.models.generate_content(model=settings.gemini_model, contents=prompt)
+            text = _response_text(response)
+            if text:
+                return text
+        except Exception:
+            continue
+    return findings["root_cause"]  # fallback to raw root_cause

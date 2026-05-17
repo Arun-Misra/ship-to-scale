@@ -277,6 +277,82 @@ async def get_connections_for_workspace(workspace_id: str) -> list[dict]:
         return []
 
 
+# ── Chat conversations ────────────────────────────────────────────────────────
+
+async def save_conversation(
+    conversation_id: str,
+    workspace_id: str,
+    connection_id: str,
+    title: str,
+    messages: list[dict],
+) -> None:
+    try:
+        messages_json = json.dumps(messages)
+        # Try update first, create if not found
+        try:
+            await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.update_document(
+                database_id=DB,
+                collection_id="chat_conversations",
+                document_id=conversation_id,
+                data={"messages_json": messages_json, "title": title},
+            )))
+        except Exception:
+            await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.create_document(
+                database_id=DB,
+                collection_id="chat_conversations",
+                document_id=conversation_id,
+                data={
+                    "workspace_id": workspace_id,
+                    "connection_id": connection_id,
+                    "title": title,
+                    "messages_json": messages_json,
+                },
+            )))
+    except Exception:
+        pass
+
+
+async def list_conversations(workspace_id: str) -> list[dict]:
+    try:
+        result = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.list_documents(
+            database_id=DB,
+            collection_id="chat_conversations",
+            queries=[Query.equal("workspace_id", workspace_id), Query.limit(50), Query.order_desc("$createdAt")],
+        )))
+        out = []
+        for d in result.documents:
+            flat = _to_dict(d)
+            try:
+                flat["messages"] = json.loads(flat.get("messages_json") or "[]")
+            except Exception:
+                flat["messages"] = []
+            out.append(flat)
+        return out
+    except Exception:
+        return []
+
+
+async def get_conversation(conversation_id: str, workspace_id: str) -> dict | None:
+    try:
+        doc = await anyio.to_thread.run_sync(lambda: _sdk_call(lambda: db.get_document(
+            database_id=DB,
+            collection_id="chat_conversations",
+            document_id=conversation_id,
+        )))
+        d = _to_dict(doc)
+        if d.get("workspace_id") != workspace_id:
+            return None
+        try:
+            d["messages"] = json.loads(d.get("messages_json") or "[]")
+        except Exception:
+            d["messages"] = []
+        return d
+    except Exception:
+        return None
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
 async def get_dashboard_summary(workspace_id: str) -> dict:
     connections = await get_connections_for_workspace(workspace_id)
     return {
