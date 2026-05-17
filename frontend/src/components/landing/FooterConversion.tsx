@@ -144,9 +144,17 @@ export default function FooterConversion() {
             </button>
           </div>
 
-          <div className="rounded-xl border border-white/[0.05] bg-black/40 px-4 py-3 text-sm">
-            <span className="text-zinc-600">$ </span>
-            <span className="text-zinc-200">npm i -g @viriya/core &amp;&amp; viriya init --workspace=demo</span>
+          <div className="rounded-xl border border-white/[0.05] bg-black/40 px-4 py-3 text-sm font-mono">
+            <span className="text-emerald-500">$ </span>
+            <span className="text-sky-400">npm</span>
+            <span className="text-zinc-400"> i -g </span>
+            <span className="text-emerald-400">@viriya/core</span>
+            <span className="text-zinc-500"> &amp;&amp; </span>
+            <span className="text-sky-400">viriya</span>
+            <span className="text-zinc-400"> init </span>
+            <span className="text-amber-400">--workspace</span>
+            <span className="text-zinc-400">=</span>
+            <span className="text-emerald-300">demo</span>
           </div>
 
           <div className="mt-3 text-xs text-zinc-600">
@@ -156,7 +164,7 @@ export default function FooterConversion() {
 
         <div className="flex flex-wrap items-center justify-center gap-3" id="technical-docs">
           <a
-            href="/investigate"
+            href="/chat"
             className="rounded-xl bg-white px-6 py-3 text-sm font-medium text-black shadow-[0_0_28px_rgba(255,255,255,0.14)] transition-all hover:bg-zinc-100 hover:shadow-[0_0_36px_rgba(255,255,255,0.22)]"
           >
             Launch Workspace

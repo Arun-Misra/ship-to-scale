@@ -17,11 +17,11 @@ import FooterConversion from "@/components/landing/FooterConversion";
 type TimelineState = "idle" | "step" | "warning" | "resolved" | "final";
 
 const chartData = [
-  { week: "W11", revenue: 78 },
-  { week: "W12", revenue: 83 },
-  { week: "W13", revenue: 80 },
-  { week: "W14", revenue: 28 },
-  { week: "W15", revenue: 82 },
+  { week: "W11", revenue: 78, fill: "#22c55e" },
+  { week: "W12", revenue: 83, fill: "#22c55e" },
+  { week: "W13", revenue: 80, fill: "#22c55e" },
+  { week: "W14", revenue: 28, fill: "#ef4444" },
+  { week: "W15", revenue: 82, fill: "#22c55e" },
 ];
 
 const mockSql =
@@ -33,21 +33,59 @@ const trustBadges = [
   { icon: Zap, label: "Zero Hallucination" },
 ];
 
+type TerminalLine = { text: string; type: "info" | "success" | "error" | "muted" };
+
+function classifyLine(line: string): TerminalLine["type"] {
+  if (!line.trim()) return "muted";
+  const lower = line.toLowerCase();
+  if (lower.includes("warning") || lower.includes("exception") || lower.includes("error")) return "error";
+  if (
+    lower.includes("verified") ||
+    lower.includes("complete") ||
+    lower.includes("located") ||
+    lower.includes("succeeded") ||
+    lower.includes("final snapshot")
+  ) return "success";
+  return "info";
+}
+
+function ColoredTerminal({ text }: { text: string }) {
+  const lines = text.split("\n").filter((l) => l !== undefined);
+  return (
+    <div className="space-y-0.5">
+      {lines.map((line, i) => {
+        const type = classifyLine(line);
+        const color =
+          type === "success" ? "text-emerald-400" :
+          type === "error"   ? "text-red-400" :
+          type === "muted"   ? "text-zinc-700" :
+                               "text-zinc-400";
+        return (
+          <div key={i} className={`font-mono text-sm leading-6 tracking-tight ${color}`}>
+            {line || " "}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function StepCard() {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md p-4 shadow-2xl"
+      className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] backdrop-blur-md p-4 shadow-2xl"
     >
       <div className="mb-3 flex items-center gap-3">
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-zinc-300">
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-400">
           Step 01
         </span>
         <span className="text-sm font-medium text-zinc-100">Trend Verification</span>
+        <span className="ml-auto flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
       </div>
-      <pre className="overflow-x-auto rounded-lg border border-white/[0.05] bg-black/40 px-4 py-3 font-mono text-[13px] tracking-tight text-zinc-300">
+      <pre className="overflow-x-auto rounded-lg border border-emerald-500/10 bg-black/40 px-4 py-3 font-mono text-[13px] tracking-tight text-emerald-300">
         {mockSql}
       </pre>
     </motion.div>
@@ -58,32 +96,65 @@ function WarningNode({ resolved }: { resolved: boolean }) {
   return (
     <motion.div
       animate={{
-        borderColor: resolved ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
-        backgroundColor: resolved ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.01)",
+        borderColor: resolved ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.25)",
+        backgroundColor: resolved ? "rgba(52,211,153,0.05)" : "rgba(239,68,68,0.05)",
       }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: 0.5 }}
       className="rounded-xl border p-4"
     >
       <div className="flex items-center gap-3">
-        <span
-          className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs transition-all duration-300 ${
-            resolved
-              ? "border-white/20 bg-white/10 text-zinc-200"
-              : "border-white/10 bg-white/5 text-zinc-400"
-          }`}
+        <motion.span
+          animate={{
+            borderColor: resolved ? "rgba(52,211,153,0.4)" : "rgba(239,68,68,0.4)",
+            backgroundColor: resolved ? "rgba(52,211,153,0.1)" : "rgba(239,68,68,0.1)",
+            color: resolved ? "#34d399" : "#f87171",
+          }}
+          transition={{ duration: 0.5 }}
+          className="flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold"
+          style={{ boxShadow: resolved ? "0 0 12px rgba(52,211,153,0.3)" : "0 0 12px rgba(239,68,68,0.3)" }}
         >
           {resolved ? "✓" : "!"}
-        </span>
+        </motion.span>
         <div>
-          <div className={`text-sm font-medium transition-colors duration-300 ${resolved ? "text-zinc-100" : "text-zinc-400"}`}>
+          <motion.div
+            animate={{ color: resolved ? "#d1fae5" : "#fca5a5" }}
+            transition={{ duration: 0.5 }}
+            className="text-sm font-medium"
+          >
             {resolved ? "Self-correction complete" : "⚠ Execution Warning: Relation ambiguous"}
-          </div>
+          </motion.div>
           <div className="mt-1 text-xs text-zinc-600">
             {resolved ? "Schema resolution succeeded." : "Retrying with an explicit relation path."}
           </div>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function CustomBar(props: { x?: number; y?: number; width?: number; height?: number; fill?: string }) {
+  const { x = 0, y = 0, width = 0, height = 0, fill = "#22c55e" } = props;
+  const isRed = fill === "#ef4444";
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height} rx={5} ry={5} fill={fill} fillOpacity={0.85} />
+      {/* glow */}
+      <rect
+        x={x - 2} y={y - 2} width={width + 4} height={height + 4}
+        rx={7} ry={7}
+        fill="none"
+        stroke={fill}
+        strokeWidth={1}
+        strokeOpacity={0.3}
+        style={{ filter: `blur(3px)` }}
+      />
+      {/* label */}
+      {isRed && (
+        <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={9} fill="#f87171" fontFamily="monospace">
+          anomaly
+        </text>
+      )}
+    </g>
   );
 }
 
@@ -100,32 +171,34 @@ function FinalResultCard() {
           <div className="text-sm font-medium text-zinc-100">Final Snapshot</div>
           <div className="mt-1 text-xs uppercase tracking-[0.24em] text-zinc-500">Week-over-week revenue</div>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-zinc-400">
+        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-emerald-400">
           computed
         </span>
       </div>
       <div className="h-[200px] rounded-xl border border-white/[0.05] bg-black/40 p-3">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
-            <CartesianGrid stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="week" tickLine={false} axisLine={false} stroke="#52525b" fontSize={11} />
             <YAxis tickLine={false} axisLine={false} stroke="#52525b" fontSize={11} />
             <Tooltip
               cursor={{ fill: "rgba(255,255,255,0.02)" }}
               contentStyle={{
-                backgroundColor: "#0A0A0A",
+                backgroundColor: "#050505",
                 border: "1px solid rgba(255,255,255,0.08)",
                 borderRadius: "12px",
                 color: "#f4f4f5",
                 boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
               }}
             />
-            <Bar dataKey="revenue" fill="rgba(255,255,255,0.85)" radius={[5, 5, 0, 0]} barSize={32} />
+            <Bar dataKey="revenue" shape={<CustomBar />} radius={[5, 5, 0, 0]} barSize={32} />
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-4 font-mono text-[12px] tracking-tight text-zinc-600">
-        Revenue = SUM(order_total) EXCL. refunds, INCL. shipping.
+      <div className="mt-3 flex items-center gap-4 font-mono text-[11px] tracking-tight text-zinc-600">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500/70" /> normal</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-red-500/70" /> anomaly</span>
+        <span className="ml-auto">Revenue = SUM(order_total) EXCL. refunds</span>
       </div>
     </motion.div>
   );
@@ -300,7 +373,7 @@ export default function HomePage() {
         </nav>
 
         <Link
-          to="/investigate"
+          to="/chat"
           className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 backdrop-blur-md transition-all hover:bg-white/10 hover:border-white/20"
         >
           Launch App
@@ -346,7 +419,7 @@ export default function HomePage() {
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link
-                to="/investigate"
+                to="/chat"
                 className="rounded-md bg-white px-6 py-3 text-sm font-medium text-black shadow-[0_0_32px_rgba(255,255,255,0.15)] transition-all duration-300 hover:shadow-[0_0_40px_rgba(255,255,255,0.25)] hover:bg-zinc-100"
               >
                 Deploy Workspace
@@ -389,13 +462,23 @@ export default function HomePage() {
 
             <div className="flex flex-1 overflow-hidden" id="spectator-ui">
               {/* Terminal panel */}
-              <div className="flex w-[35%] flex-col justify-between overflow-hidden border-r border-white/[0.04] bg-black/30 p-4 font-mono text-sm text-zinc-400">
-                <div ref={terminalContainerRef} className="space-y-1 overflow-y-auto pr-2 leading-6">
-                  <pre className="whitespace-pre-wrap tracking-tight">{reasoningText}</pre>
+              <div className="flex w-[35%] flex-col justify-between overflow-hidden border-r border-white/[0.04] bg-black/30 p-4">
+                <div ref={terminalContainerRef} className="overflow-y-auto pr-2">
+                  <ColoredTerminal text={reasoningText} />
                 </div>
-                <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-zinc-600">
-                  <span className={`inline-block h-4 w-2 rounded-sm bg-white transition-opacity ${cursorVisible ? "opacity-80" : "opacity-0"}`} />
-                  <span>{timelineState}</span>
+                <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.24em]">
+                  <span
+                    className={`inline-block h-4 w-2 rounded-sm transition-opacity ${cursorVisible ? "opacity-100" : "opacity-0"} ${
+                      timelineState === "warning" ? "bg-red-400" :
+                      timelineState === "resolved" || timelineState === "final" ? "bg-emerald-400" :
+                      "bg-zinc-400"
+                    }`}
+                  />
+                  <span className={
+                    timelineState === "warning" ? "text-red-500" :
+                    timelineState === "resolved" || timelineState === "final" ? "text-emerald-500" :
+                    "text-zinc-600"
+                  }>{timelineState}</span>
                 </div>
               </div>
 
