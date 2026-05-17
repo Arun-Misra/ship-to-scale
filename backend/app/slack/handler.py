@@ -4,6 +4,7 @@ P6 — Background task handler for Slack events.
 Ghost bot safety: try/except wraps entire task. Inner except on fallback slack_post.
 If even the fallback fails, log and move on — never go silent without trying.
 """
+
 import json
 import logging
 import uuid
@@ -23,7 +24,21 @@ async def handle_slack_event(
     bot_token: str,
 ) -> None:
     try:
-        await slack_post(bot_token, channel, thread_ts, "_Investigating your question…_ ⏳")
+        if not bot_token or not channel:
+            logger.error("Slack handler missing bot token or channel")
+            return
+
+        if not workspace_id or not connection_id:
+            await slack_post(
+                bot_token,
+                channel,
+                thread_ts,
+                "I am connected to Slack, but no data source is configured for this workspace yet. "
+                "Connect a source in the dashboard and try again.",
+            )
+            return
+
+        await slack_post(bot_token, channel, thread_ts, "_Investigating your question..._ ⏳")
 
         investigation_id = str(uuid.uuid4())
         final_event: dict | None = None
@@ -67,7 +82,9 @@ async def handle_slack_event(
         logger.error("Slack agent failure: %s", e, exc_info=True)
         try:
             await slack_post(
-                bot_token, channel, thread_ts,
+                bot_token,
+                channel,
+                thread_ts,
                 "I ran into an error while investigating. Please check the dashboard for details.",
             )
         except Exception:
