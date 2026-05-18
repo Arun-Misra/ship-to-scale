@@ -1,104 +1,152 @@
-﻿# viriya â€” The AI Data Team
+# Viriya — The AI Data Team
 
 > Connect your data, ask anything in plain English, get an autonomous analyst that investigates problems, watches your numbers 24/7, and learns your business's private language over time.
 
----
-
-## Team Assignments (build order â†’ Â§12 TRD)
-
-| Phase | Owner | What to build | Gate |
-|-------|-------|---------------|------|
-| **H0** | All | Freeze API contract, deploy empty app to Vercel + Render | `api-contract.json` committed; `/health` 200 in prod |
-| **P1** | BE | Pydantic schemas + DuckDB SessionManager + Sandbox | Unit tests pass: schemas reject malformed, demo file opens read-only under 10 concurrent handles |
-| **P2** | BE | Agent ReAct loop (validateâ†’EXPLAINâ†’sandbox, retry budget, graceful partial) | Full "why did revenue drop" run completes and emits `final` event |
-| **P3** âˆ¥ | BE | Appwrite auth + connection registration + schema crawl | JWT enforced; writable role rejected |
-| **P4** âˆ¥ | FE | Streaming UI: SSE client, reasoning panel, charts, definition receipts | Renders P2 captured stream correctly |
-| **P5** | BE+FE | Data quality scan + semantic engine + web dashboard | Quality report shows real issues; semantic defs visible |
-| **P6** | BE | Two-way Slack bot + Signals feed (pre-computed anomaly) | Bot answers in Slack; `/signals` returns anomaly |
-| **P7** | All | Capture replay fixture, rehearse 5Ã— end-to-end | Full demo runs 5Ã— clean; QR works off-network |
-
-**P3 and P4 run IN PARALLEL with P1/P2 â€” never after.**
+Viriya replaces the traditional data analyst's role by connecting directly to your company's live data sources to provide instant answers, deep-dive root-cause investigations, and automated data quality checks. It builds a permanent, non-portable "company brain" by learning your specific metric definitions over time.
 
 ---
 
-## Project Structure
+## ✨ Core Features (The 4 Layers)
 
-```
-viriya/
-â”œâ”€â”€ api-contract.json          â† H0: FEâ†”BE contract, frozen at hour 0
-â”œâ”€â”€ backend/                   â† FastAPI (Python) â†’ Render/Railway
-â””â”€â”€ frontend/                  â† React/Vite (TypeScript) â†’ Vercel
-```
+1. **🔌 Connect (Read-Only)**
+Connects securely to Postgres, MySQL, Snowflake, Stripe, and more via OAuth or DSN. *Viriya is strictly read-only.* It never writes to, fixes, or mutates your source data.
+2. **🧹 Clean (Trust Foundation)**
+Performs a read-only data quality scan on a bounded in-memory sample. It flags issues like date format inconsistencies, text-as-number fields, unexpected nulls, and likely duplicates—showing you the problems without auto-fixing anything.
+3. **🕵️‍♂️ Investigate (The Autonomous Agent)**
+Ask plain-English questions ("Why did revenue drop?") to trigger a ReAct-style autonomous loop. Viriya plans, writes SQL, validates via `EXPLAIN`, executes in a read-only sandbox, reasons through the results, and synthesizes a narrative root-cause report with visual charts.
+4. **🧠 Learn (The Semantic Moat)**
+Harvests existing dbt manifests/views and captures definitions just-in-time when you ask about ambiguous metrics. Every answer carries a "definition receipt" (e.g., *Revenue = SUM(order_total) excl. refunds*).
 
 ---
 
-## Quick Start
+## 🏗 Tech Stack
 
-### Backend
+**Frontend**
+
+* React 18 (Vite, TypeScript)
+* Tailwind CSS + shadcn/ui for styling
+* Recharts for data visualization
+* Appwrite JS SDK for Authentication
+
+**Backend**
+
+* Python (FastAPI) deployed via Render/Railway
+* **DuckDB:** The engine. Uses in-memory per-session connections for live DBs, and baked read-only files for demo environments.
+* **Appwrite Cloud:** Auth, Workspaces, Connection Registry, and Semantic Store.
+* **LLM:** Gemini 2.0 Flash (Streaming reasoning + JSON schema generation).
+* **Integration:** Two-way Slack bot (Events API).
+
+---
+
+## 🚀 Quick Start
+
+### 1. Backend Setup
 
 ```bash
 cd backend
-cp .env.example .env          # fill in secrets
+cp .env.example .env
+# Fill in Appwrite, Gemini, and Slack secrets (see Environment Variables below)
+
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+# Run single-process (never use multi-workers with local DuckDB)
+uvicorn app.main:app --reload --port 8000 
+
 ```
 
-### Frontend
+### 2. Frontend Setup
 
 ```bash
 cd frontend
-cp .env.example .env          # fill in VITE_API_URL + Appwrite config
+cp .env.example .env
+# Fill in VITE_API_URL and Appwrite config
+
 npm install
 npm run dev
+
 ```
 
 ---
 
-## Environment Variables
+## ⚙️ Environment Variables
 
-### Backend (`backend/.env`)
-```
+**Backend (`backend/.env`)**
+
+```ini
 GEMINI_API_KEY=
 APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
 APPWRITE_PROJECT_ID=
 APPWRITE_API_KEY=
+APPWRITE_DB_ID=viriya_db
+# Slack Config
 SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
 SLACK_CLIENT_ID=
 SLACK_CLIENT_SECRET=
+# Demo Data
 DEMO_DB_PATH=data/demo.duckdb
+
 ```
 
-### Frontend (`frontend/.env`)
-```
+**Frontend (`frontend/.env`)**
+
+```ini
 VITE_API_URL=http://localhost:8000/api/v1
 VITE_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
 VITE_APPWRITE_PROJECT_ID=
+
 ```
 
 ---
 
-## Critical Engineering Rules (read before touching code)
+## 📂 Project Structure
 
-1. **DuckDB**: Never a persistent writable `.duckdb` file under multiple workers. Demo path = `read_only=True`. Live path = `:memory:` per investigation session. See `backend/app/db/session.py`.
+```text
+viriya/
+├── api-contract.json          ← The source-of-truth FE↔BE API contract
+├── backend/                   
+│   ├── app/
+│   │   ├── agent/             ← ReAct loop, schemas, Server-Sent Events (SSE) logic
+│   │   ├── api/               ← FastAPI REST/SSE endpoints
+│   │   ├── appwrite/          ← Appwrite SDK wrappers (threaded)
+│   │   ├── db/                ← DuckDB Session Manager & Sandbox
+│   │   ├── quality/           ← Data quality scanners
+│   │   ├── semantic/          ← Semantic engine & just-in-time capture
+│   │   └── slack/             ← Slack webhook signature verification & bot logic
+│   └── data/                  ← Baked read-only .duckdb demo files
+└── frontend/                  
+    ├── src/
+    │   ├── api/               ← Typed fetch wrappers
+    │   ├── components/        ← UI (ReasoningPanel, StepCard, FinalReport, etc.)
+    │   ├── hooks/             ← useInvestigationStream.ts, useAppwrite.ts
+    │   └── pages/             ← Routing (Investigate, Dashboard, Quality, Semantic)
+    └── package.json           
 
-2. **SSE wire format**: `reasoning` events = opaque text (never `JSON.parse`). All other events = one complete JSON object per event, emitted only through `sse_struct()`. See `backend/app/agent/sse.py`.
-
-3. **Slack**: Read raw bytes FIRST, verify HMAC signature, THEN `json.loads`. Never `await request.json()` before verification. See `backend/app/slack/signature.py`.
-
-4. **Appwrite SDK is synchronous** â€” wrap every call in `anyio.to_thread.run_sync()`. Never `await appwrite_method()` directly. See `backend/app/appwrite/store.py`.
-
-5. **Frontend stream**: Use `fetch` + `ReadableStream` + `AbortController` in `useRef`. Never `EventSource` (auto-reconnect breaks the stream). See `frontend/src/hooks/useInvestigationStream.ts`.
-
-6. **Pydantic models**: All `Action` models must have `model_config = ConfigDict(extra="forbid")`. Without it, Pydantic v2 silently drops unknown fields. See `backend/app/agent/schemas.py`.
-
-7. **Never emit dialect SQL** â€” the agent targets the semantic/metric layer. `compile(ast, dialect)` is the seam. See `backend/app/db/sandbox.py`.
+```
 
 ---
 
-## Deploy
+## 🛑 Critical Engineering Rules (Non-Negotiable)
 
-- **Frontend â†’ Vercel**: connect GitHub, auto-deploy on push to `main`.
-- **Backend â†’ Render**: connect GitHub, `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, **single worker** (`--workers 1`).
-- Deploy the empty app at **H0** (hour 0â€“1). Redeploy continuously on every push.
+Read these before contributing. They prevent catastrophic failures in concurrency, UI rendering, and external integrations.
 
+1. **DuckDB Concurrency:** **Never** open a persistent `.duckdb` file with write access under multiple workers.
+* *Demo path:* Open files explicitly with `read_only=True`.
+* *Live path:* Use `:memory:` per investigation session and `ATTACH ... READ_ONLY`.
+
+
+2. **The SSE Wire Format:** The investigation streaming API prevents UI crashes by splitting the stream.
+* `reasoning` events are raw, opaque text (streamed tokens). **Never** `JSON.parse` them on the frontend.
+* `action`, `observation`, `step_end`, `final` events are fully-formed, rigid JSON objects. The backend only emits them once fully constructed.
+
+
+3. **Frontend Stream Consumption:** The React frontend **must** use `fetch` + `ReadableStream` + `AbortController` stored in a `useRef`. **Never use `EventSource**`, as its auto-reconnect behavior duplicates the stream.
+4. **Appwrite SDK Blocking:** The official Python Appwrite SDK is synchronous. Wrap **every** call in `anyio.to_thread.run_sync()` in the backend so it doesn't block the ASGI event loop and freeze SSE streams.
+5. **Slack Webhook Verification:** When receiving Slack events, verify the HMAC signature against the **raw byte payload** first. Never call `await request.json()` before verification, as middleware mutates the bytes and breaks the hash.
+6. **LLM Structured Output:** Gemini 2.0 Flash must be forced to output raw JSON without markdown formatting (````json` fences). Use Pydantic's `model_config = ConfigDict(extra="forbid")` to rigorously enforce schema bounds and fail safely.
+
+---
+
+## 🚢 Deployment
+
+* **Frontend:** Deploy to **Vercel**. Connect GitHub, auto-deploys on push to `main`.
+* **Backend:** Deploy to **Render** or **Railway**. Run as a single worker (`uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`).
